@@ -2,7 +2,7 @@
 #define __STATUSLINECTRL_H__
 
 class CQueueView;
-class CStatusLineCtrl : public wxWindow
+class CStatusLineCtrl : public wxControl
 {
 public:
 	CStatusLineCtrl(CQueueView* pParent, const t_EngineData* const pEngineData, const wxRect& initialPosition);
