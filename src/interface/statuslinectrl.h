@@ -21,19 +21,12 @@ public:
 	virtual bool Show(bool show = true);
 
 protected:
-	void DrawRightAlignedText(wxDC& dc, wxString text, int x, int y);
-	void DrawProgressBar(wxDC& dc, int x, int y, int height, int bar_split, int permill);
-
 	CQueueView* m_pParent;
 	const t_EngineData* m_pEngineData;
 	CTransferStatus* m_pStatus;
 
 	wxString m_statusText;
 	wxTimer m_transferStatusTimer;
-
-	static int m_fieldOffsets[4];
-	static wxCoord m_textHeight;
-	static bool m_initialized;
 
 	bool m_madeProgress;
 
@@ -54,19 +47,14 @@ protected:
 	wxFileOffset m_gcLastSpeed;
 
 	//Used to avoid excessive redraws
-	wxBitmap m_data;
-	wxMemoryDC* m_mdc;
-	wxString* m_pPreviousStatusText;
-	int m_last_elapsed_seconds;
-	int m_last_left;
-	wxString m_last_bytes_and_rate;
-	int m_last_bar_split;
-	int m_last_permill;
+	wxStaticText * m_bytes_and_rateLabel;
+	wxStaticText * m_elapsedLabel;
+	wxStaticText * m_remainingLabel;
+	wxGauge * m_progressBar;
+	wxStaticText * m_progressLabel;
 
 	DECLARE_EVENT_TABLE()
-	void OnPaint(wxPaintEvent& event);
 	void OnTimer(wxTimerEvent& event);
-	void OnEraseBackground(wxEraseEvent& event);
 };
 
 #endif // __STATUSLINECTRL_H__

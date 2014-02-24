@@ -1,32 +1,21 @@
 #include <filezilla.h>
+#include <wx/gauge.h>
 #include "queue.h"
 #include "statuslinectrl.h"
-#include <wx/dcbuffer.h>
 #include "Options.h"
 #include "sizeformatting.h"
 
 BEGIN_EVENT_TABLE(CStatusLineCtrl, wxWindow)
-EVT_PAINT(CStatusLineCtrl::OnPaint)
+//EVT_PAINT(CStatusLineCtrl::OnPaint)
 EVT_TIMER(wxID_ANY, CStatusLineCtrl::OnTimer)
-EVT_ERASE_BACKGROUND(CStatusLineCtrl::OnEraseBackground)
+//EVT_ERASE_BACKGROUND(CStatusLineCtrl::OnEraseBackground)
 END_EVENT_TABLE()
-
-int CStatusLineCtrl::m_fieldOffsets[4];
-wxCoord CStatusLineCtrl::m_textHeight;
-bool CStatusLineCtrl::m_initialized = false;
 
 #define PROGRESSBAR_WIDTH 102
 
 CStatusLineCtrl::CStatusLineCtrl(CQueueView* pParent, const t_EngineData* const pEngineData, const wxRect& initialPosition)
 	: m_pEngineData(pEngineData)
 {
-	m_mdc = 0;
-	m_pPreviousStatusText = 0;
-	m_last_elapsed_seconds = 0;
-	m_last_left = 0;
-	m_last_bar_split = -1;
-	m_last_permill = -1;
-
 	wxASSERT(pEngineData);
 
 #ifdef __WXMSW__
@@ -52,211 +41,38 @@ CStatusLineCtrl::CStatusLineCtrl(CQueueView* pParent, const t_EngineData* const 
 
 	SetTransferStatus(0);
 
+	m_elapsedLabel = new wxStaticText(this, wxID_ANY, wxTimeSpan(100, 0, 0).Format(_("%H:%M:%S elapsed")),
+									  wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT|wxST_NO_AUTORESIZE);
+	m_remainingLabel = new wxStaticText(this, wxID_ANY, wxTimeSpan(100, 0, 0).Format(_("%H:%M:%S left")),
+										wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT|wxST_NO_AUTORESIZE);
+	m_progressBar = new wxGauge(this, wxID_ANY, 1);
+	m_progressBar->SetMinSize(wxSize(PROGRESSBAR_WIDTH, 0));
+	m_progressLabel = new wxStaticText(this, wxID_ANY, _T(">100.0%"));
+	m_bytes_and_rateLabel = new wxStaticText(this, wxID_ANY, _T(""));
 
-	// Calculate field widths so that the contents fit under every language.
-	if (!m_initialized)
-	{
-		m_initialized = true;
-		wxClientDC dc(this);
-		dc.SetFont(GetFont());
+	wxBoxSizer * sizer = new wxBoxSizer(wxHORIZONTAL);
+	sizer->AddSpacer(50);
+	sizer->Add(m_elapsedLabel, 0, wxALIGN_CENTER_VERTICAL|wxFIXED_MINSIZE|wxRIGHT, 10);
+	sizer->Add(m_remainingLabel, 0, wxALIGN_CENTER_VERTICAL|wxFIXED_MINSIZE|wxRIGHT, 10);
+	sizer->Add(m_progressBar, 0, wxEXPAND|wxALL, 2);
+	sizer->Add(m_progressLabel, 0, wxALIGN_CENTER_VERTICAL|wxFIXED_MINSIZE|wxRIGHT, 10);
+	sizer->Add(m_bytes_and_rateLabel, 1, wxALIGN_CENTER_VERTICAL);
+	SetSizer(sizer);
+	Layout();
 
-		wxCoord w, h;
-		wxTimeSpan elapsed(100, 0, 0);
-		dc.GetTextExtent(elapsed.Format(_("%H:%M:%S elapsed")), &w, &h);
-		m_textHeight = h;
-		m_fieldOffsets[0] = 50 + w;
-
-		dc.GetTextExtent(elapsed.Format(_("%H:%M:%S left")), &w, &h);
-		m_fieldOffsets[1] = m_fieldOffsets[0] + 20 + w;
-
-		m_fieldOffsets[2] = m_fieldOffsets[1] + 20;
-		m_fieldOffsets[3] = m_fieldOffsets[2] + PROGRESSBAR_WIDTH + 20;
-	}
+	m_elapsedLabel->SetLabel(_T(""));
+	m_remainingLabel->SetLabel(_T(""));
+	m_progressLabel->SetLabel(_T(""));
 }
 
 CStatusLineCtrl::~CStatusLineCtrl()
 {
-	delete m_mdc;
-	delete m_pPreviousStatusText;
-
 	if (m_pStatus && m_pStatus->totalSize >= 0)
 		m_pEngineData->pItem->SetSize(m_pStatus->totalSize);
 
 	if (m_transferStatusTimer.IsRunning())
 		m_transferStatusTimer.Stop();
 	delete m_pStatus;
-}
-
-void CStatusLineCtrl::OnPaint(wxPaintEvent& event)
-{
-	wxPaintDC dc(this);
-
-	wxRect rect = GetRect();
-
-	int refresh = 0;
-	if (!m_data.IsOk() || rect.GetWidth() != m_data.GetWidth() || rect.GetHeight() != m_data.GetHeight())
-	{
-		delete m_mdc;
-		m_data = wxBitmap(rect.GetWidth(), rect.GetHeight());
-		m_mdc = new wxMemoryDC(m_data);
-		// Use same layout direction as the DC which bitmap is drawn on.
-		// This avoids problem with mirrored characters on RTL locales.
-		m_mdc->SetLayoutDirection(dc.GetLayoutDirection());
-		refresh = 31;
-	}
-
-	wxTimeSpan elapsed;
-	int left = -1;
-	wxFileOffset rate;
-	wxString bytes_and_rate;
-	int bar_split = -1;
-	int permill = -1;
-
-	if (!m_pStatus)
-	{
-		if (!m_pPreviousStatusText || *m_pPreviousStatusText != m_statusText)
-		{
-			// Clear background
-			m_mdc->SetFont(GetFont());
-			m_mdc->SetPen(GetBackgroundColour());
-			m_mdc->SetBrush(GetBackgroundColour());
-			m_mdc->SetTextForeground(GetForegroundColour());
-			m_mdc->DrawRectangle(0, 0, rect.GetWidth(), rect.GetHeight());
-			wxCoord h = (rect.GetHeight() - m_textHeight) / 2;
-			m_mdc->DrawText(m_statusText, 50, h);
-			delete m_pPreviousStatusText;
-			m_pPreviousStatusText = new wxString(m_statusText);
-			refresh = 0;
-		}
-	}
-	else
-	{
-		if (m_pPreviousStatusText)
-		{
-			delete m_pPreviousStatusText;
-			m_pPreviousStatusText = 0;
-			refresh = 31;
-		}
-
-		int elapsed_seconds = 0;
-		if (m_pStatus->started.IsValid())
-		{
-			elapsed = wxDateTime::Now().Subtract(m_pStatus->started);
-			elapsed_seconds = elapsed.GetSeconds().GetLo(); // Assume GetHi is always 0
-		}
-
-		if (elapsed_seconds != m_last_elapsed_seconds)
-		{
-			refresh |= 1;
-			m_last_elapsed_seconds = elapsed_seconds;
-		}
-
-		if (COptions::Get()->GetOptionVal(OPTION_SPEED_DISPLAY))
-			rate = GetCurrentSpeed();
-		else
-			rate = GetSpeed(elapsed_seconds);
-
-		if (m_pStatus->totalSize > 0 && elapsed_seconds && rate > 0)
-		{
-			wxFileOffset r = m_pStatus->totalSize - m_pStatus->currentOffset;
-			left = r / rate + 1;
-			if (r)
-				++left;
-
-			if (left < 0)
-				left = 0;
-		}
-
-		if (m_last_left != left)
-		{
-			refresh |= 2;
-			m_last_left = left;
-		}
-
-		const wxString bytestr = CSizeFormat::Format(m_pStatus->currentOffset, true, CSizeFormat::bytes, COptions::Get()->GetOptionVal(OPTION_SIZE_USETHOUSANDSEP) != 0, 0);
-		if (elapsed_seconds && rate > -1)
-		{
-			CSizeFormat::_format format = static_cast<CSizeFormat::_format>(COptions::Get()->GetOptionVal(OPTION_SIZE_FORMAT));
-			if (format == CSizeFormat::bytes)
-				format = CSizeFormat::iec;
-			const wxString ratestr = CSizeFormat::Format(rate, true,
-														 format,
-														 COptions::Get()->GetOptionVal(OPTION_SIZE_USETHOUSANDSEP) != 0,
-														 COptions::Get()->GetOptionVal(OPTION_SIZE_DECIMALPLACES));
-			bytes_and_rate.Printf(_("%s (%s/s)"), bytestr.c_str(), ratestr.c_str() );
-		}
-		else
-			bytes_and_rate.Printf(_("%s (? B/s)"), bytestr.c_str());
-
-		if (m_last_bytes_and_rate != bytes_and_rate)
-		{
-			refresh |= 8;
-			m_last_bytes_and_rate = bytes_and_rate;
-		}
-
-		if (m_pStatus->totalSize > 0)
-		{
-			bar_split = wxLongLong(m_pStatus->currentOffset * (PROGRESSBAR_WIDTH - 2) / m_pStatus->totalSize).GetLo();
-			if (bar_split > (PROGRESSBAR_WIDTH - 2))
-				bar_split = PROGRESSBAR_WIDTH - 2;
-
-			if (m_pStatus->currentOffset > m_pStatus->totalSize)
-				permill = 1001;
-			else
-				permill = wxLongLong(m_pStatus->currentOffset * 1000 / m_pStatus->totalSize).GetLo();
-		}
-
-		if (m_last_bar_split != bar_split || m_last_permill != permill)
-		{
-			refresh |= 4;
-			m_last_bar_split = bar_split;
-			m_last_permill = permill;
-		}
-	}
-
-	if (refresh)
-	{
-		m_mdc->SetFont(GetFont());
-		m_mdc->SetPen(GetBackgroundColour());
-		m_mdc->SetBrush(GetBackgroundColour());
-		m_mdc->SetTextForeground(GetForegroundColour());
-
-		// Get character height so that we can center the text vertically.
-		wxCoord h = (rect.GetHeight() - m_textHeight) / 2;
-
-		if (refresh & 1)
-		{
-			m_mdc->DrawRectangle(0, 0, m_fieldOffsets[0], rect.GetHeight());
-			DrawRightAlignedText(*m_mdc, elapsed.Format(_("%H:%M:%S elapsed")), m_fieldOffsets[0], h);
-		}
-		if (refresh & 2)
-		{
-			m_mdc->DrawRectangle(m_fieldOffsets[0], 0, m_fieldOffsets[1] - m_fieldOffsets[0], rect.GetHeight());
-			if (left != -1)
-			{
-				wxTimeSpan timeLeft(0, 0, left);
-				DrawRightAlignedText(*m_mdc, timeLeft.Format(_("%H:%M:%S left")), m_fieldOffsets[1], h);
-			}
-			else
-				DrawRightAlignedText(*m_mdc, _("--:--:-- left"), m_fieldOffsets[1], h);
-		}
-		if (refresh & 8)
-		{
-			m_mdc->DrawRectangle(m_fieldOffsets[3], 0, rect.GetWidth() - m_fieldOffsets[3], rect.GetHeight());
-			m_mdc->DrawText(bytes_and_rate, m_fieldOffsets[3], h);
-		}
-		if (refresh & 16)
-		{
-			m_mdc->DrawRectangle(m_fieldOffsets[1], 0, m_fieldOffsets[2] - m_fieldOffsets[1], rect.GetHeight());
-		}
-		if (refresh & 4)
-		{
-			m_mdc->DrawRectangle(m_fieldOffsets[2], 0, m_fieldOffsets[3] - m_fieldOffsets[2], rect.GetHeight());
-			if (bar_split != -1)
-				DrawProgressBar(*m_mdc, m_fieldOffsets[2], 1, rect.GetHeight() - 2, bar_split, permill);
-		}
-	}
-	dc.Blit(0, 0, rect.GetWidth(), rect.GetHeight(), m_mdc, 0, 0);
 }
 
 void CStatusLineCtrl::SetTransferStatus(const CTransferStatus* pStatus)
@@ -329,66 +145,70 @@ void CStatusLineCtrl::OnTimer(wxTimerEvent& event)
 	}
 	else
 		m_transferStatusTimer.Stop();
-}
 
-void CStatusLineCtrl::DrawRightAlignedText(wxDC& dc, wxString text, int x, int y)
-{
-	wxCoord w, h;
-	dc.GetTextExtent(text, &w, &h);
-	x -= w;
+	//Update fields
+	int elapsed_seconds = 0;
+	if (m_pStatus->started.IsValid())
+		elapsed_seconds = wxDateTime::Now().Subtract(m_pStatus->started).GetSeconds().GetLo(); // Assume GetHi is always 0
 
-	dc.DrawText(text, x, y);
-}
+	wxFileOffset rate;
+	if (COptions::Get()->GetOptionVal(OPTION_SPEED_DISPLAY))
+		rate = GetCurrentSpeed();
+	else
+		rate = GetSpeed(elapsed_seconds);
 
-void CStatusLineCtrl::OnEraseBackground(wxEraseEvent& event)
-{
-	// Don't erase background, only causes status line to flicker.
-}
-
-void CStatusLineCtrl::DrawProgressBar(wxDC& dc, int x, int y, int height, int bar_split, int permill)
-{
-	wxASSERT(bar_split != -1);
-	wxASSERT(permill != -1);
-
-	// Draw right part
-	dc.SetPen(*wxTRANSPARENT_PEN);
-	dc.SetBrush(wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE));
-	dc.DrawRectangle(x + 1 + bar_split, y + 1, PROGRESSBAR_WIDTH - bar_split - 1, height - 2);
-
-	if (bar_split && height > 2)
+	CSizeFormat::_format format = static_cast<CSizeFormat::_format>(COptions::Get()->GetOptionVal(OPTION_SIZE_FORMAT));
+	const wxString bytestr = CSizeFormat::Format(m_pStatus->currentOffset, true, format,
+												 COptions::Get()->GetOptionVal(OPTION_SIZE_USETHOUSANDSEP) != 0,
+												 COptions::Get()->GetOptionVal(OPTION_SIZE_DECIMALPLACES));
+	if (elapsed_seconds && rate > -1)
 	{
-		// Draw pretty gradient
+		if (format == CSizeFormat::bytes)
+			format = CSizeFormat::iec;
+		const wxString ratestr = CSizeFormat::Format(rate, true,
+													 format,
+													 COptions::Get()->GetOptionVal(OPTION_SIZE_USETHOUSANDSEP) != 0,
+													 COptions::Get()->GetOptionVal(OPTION_SIZE_DECIMALPLACES));
+		m_bytes_and_rateLabel->SetLabel(wxString::Format(_("%s (%s/s)"), bytestr.c_str(), ratestr.c_str()));
+	}
+	else
+		m_bytes_and_rateLabel->SetLabel(wxString::Format(_("%s (? B/s)"), bytestr.c_str()));
 
-		int greenmin = 128;
-		int greenmax = 255;
-		int colourCount = ((height + 1) / 2);
+	wxFileOffset left = -1;
+	if (m_pStatus->totalSize > 0 && elapsed_seconds && rate > 0)
+	{
+		wxFileOffset r = m_pStatus->totalSize - m_pStatus->currentOffset;
+		left = r / rate + 1;
+		if (r)
+			++left;
 
-		for (int i = 0; i < colourCount; i++)
-		{
-			int curGreen = greenmax - ((greenmax - greenmin) * i / (colourCount - 1));
-			dc.SetPen(wxPen(wxColour(0, curGreen, 0)));
-			dc.DrawLine(x + 1, y + colourCount - i, x + 1 + bar_split, y + colourCount - i);
-			dc.DrawLine(x + 1, y + height - colourCount + i - 1, x + 1 + bar_split, y + height - colourCount + i - 1);
+		if (left < 0)
+			left = 0;
+	}
+
+	m_elapsedLabel->SetLabel(wxTimeSpan(0, 0, elapsed_seconds).Format(_("%H:%M:%S elapsed")));
+	m_remainingLabel->SetLabel(left != -1 ? wxTimeSpan(0, 0, left).Format(_("%H:%M:%S left")).c_str()
+										  : _("--:--:-- left"));
+
+	if (m_pStatus->totalSize > 0) {
+		m_progressBar->SetRange(m_pStatus->totalSize);
+		m_progressBar->SetValue(m_pStatus->currentOffset);
+
+		int permill;
+		wxString prefix;
+		if (m_pStatus->currentOffset > m_pStatus->totalSize) {
+			prefix = _T("> ");
+			permill = 1000;
 		}
+		else
+			permill = wxLongLong(m_pStatus->currentOffset * 1000 / m_pStatus->totalSize).GetLo();
+		m_progressLabel->SetLabel(wxString::Format(_T("%s%d.%d%%"), prefix.c_str(), permill / 10, permill % 10));
+	} else {
+		m_progressBar->SetValue(0);
+		m_progressBar->SetRange(1);
+		m_progressLabel->SetLabel(wxString::Format(_T("%s%d.%d%%"), wxString().c_str(), 0, 0));
 	}
-
-	dc.SetPen(*wxBLACK_PEN);
-	dc.SetBrush(*wxTRANSPARENT_BRUSH);
-	dc.DrawRectangle(x, y, PROGRESSBAR_WIDTH, height);
-
-	// Draw percentage-done text
-	wxString prefix;
-	if( permill > 1000)
-	{
-		prefix = _T("> ");
-		permill = 1000;
-	}
-
-	wxString text = wxString::Format(_T("%s%d.%d%%"), prefix.c_str(), permill / 10, permill % 10);
-
-	wxCoord w, h;
-	dc.GetTextExtent(text, &w, &h);
-	dc.DrawText(text, x + PROGRESSBAR_WIDTH / 2 - w / 2, y + height / 2 - h / 2);
+	Layout();
 }
 
 wxFileOffset CStatusLineCtrl::GetSpeed(int elapsedSeconds)
