@@ -1,4 +1,5 @@
 #include <filezilla.h>
+#include <wx/stdpaths.h>
 #include "commandqueue.h"
 #include "context_control.h"
 #include "filelist_statusbar.h"
@@ -90,9 +91,19 @@ void CContextControl::CreateTab()
 
 	pState->GetRecursiveOperationHandler()->SetQueue(m_pMainFrame->GetQueue());
 
-	wxString localDir = COptions::Get()->GetOption(OPTION_LASTLOCALDIR);
-	if (!pState->SetLocalDir(localDir))
-		pState->SetLocalDir(_T("/"));
+	const wxString paths[] = {
+		COptions::Get()->GetOption(OPTION_LASTLOCALDIR),
+	#ifdef __WXOSX__
+		wxStandardPaths::Get().GetDocumentsDir() + _T("/../Downloads"),
+	#endif
+		wxStandardPaths::Get().GetDocumentsDir() + _T("/Download"),
+		wxStandardPaths::Get().GetDocumentsDir() + _T("/Downloads"),
+		wxStandardPaths::Get().GetDocumentsDir(),
+		_T("/")
+	};
+	for(size_t i=0; i<sizeof(paths)/sizeof(paths[0]); i++)
+		if (pState->SetLocalDir(paths[i]))
+			break;
 
 	CContextManager::Get()->SetCurrentContext(pState);
 
