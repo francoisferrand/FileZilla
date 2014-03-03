@@ -17,6 +17,9 @@
 #include "themeprovider.h"
 #include <wx/rawbmp.h>
 #endif
+#ifdef __WXGTK__
+#include "gio/gio.h"
+#endif
 
 wxImageListEx::wxImageListEx()
 	: wxImageList()
@@ -63,7 +66,14 @@ static void OverlaySymlink(wxBitmap& bmp)
 {
 	// This is ugly, but apparently needed so that the data is _really_ in the right internal format
 	bmp = bmp.ConvertToImage();
-	wxBitmap symlink = wxArtProvider::GetBitmap(_T("ART_SYMLINK"),  wxART_OTHER, wxSize(bmp.GetWidth(), bmp.GetHeight())).ConvertToImage();
+
+	wxBitmap symlink;
+#ifdef __WXGTK__
+	symlink = wxArtProvider::GetBitmap(_T("emblem-symbolic-link"), wxART_OTHER, wxSize(bmp.GetWidth(), bmp.GetHeight()));
+#endif
+	if (!symlink.IsOk())
+		symlink = wxArtProvider::GetBitmap(_T("ART_SYMLINK"), wxART_OTHER, wxSize(bmp.GetWidth(), bmp.GetHeight()));
+	symlink = symlink.ConvertToImage();
 
 	wxAlphaPixelData target(bmp);
 	wxAlphaPixelData source(symlink);
@@ -119,9 +129,24 @@ bool CSystemImageList::CreateSystemImageList(int size)
 #else
 	m_pImageList = new wxImageListEx(size, size);
 
-	wxBitmap file = wxArtProvider::GetBitmap(_T("ART_FILE"),  wxART_OTHER, wxSize(size, size));
-	wxBitmap folderclosed = wxArtProvider::GetBitmap(_T("ART_FOLDERCLOSED"),  wxART_OTHER, wxSize(size, size));
-	wxBitmap folder = wxArtProvider::GetBitmap(_T("ART_FOLDER"),  wxART_OTHER, wxSize(size, size));
+	wxBitmap file;
+	wxBitmap folderclosed;
+	wxBitmap folder;
+#ifdef __WXGTK__
+	file = wxArtProvider::GetBitmap(_T("unknown"),  wxART_OTHER, wxSize(size, size));
+	folderclosed = wxArtProvider::GetBitmap(_T("folder"),  wxART_OTHER, wxSize(size, size));
+	folder = wxArtProvider::GetBitmap(_T("folder-open"),  wxART_OTHER, wxSize(size, size));
+//#elif defined(__WXMAC__)
+//Get from system:
+//	[[NSWorkspace sharedWorkspace] iconForFileType:NSFileTypeForHFSTypeCode(kGenericFolderIcon)]
+#endif
+	if (!file.IsOk())
+		file = wxArtProvider::GetBitmap(_T("ART_FILE"),  wxART_OTHER, wxSize(size, size));
+	if (!folderclosed.IsOk())
+		folderclosed = wxArtProvider::GetBitmap(_T("ART_FOLDERCLOSED"),  wxART_OTHER, wxSize(size, size));
+	if (!folder.IsOk())
+		folder = wxArtProvider::GetBitmap(_T("ART_FOLDER"),  wxART_OTHER, wxSize(size, size));
+
 	m_pImageList->Add(file);
 	m_pImageList->Add(folderclosed);
 	m_pImageList->Add(folder);
@@ -150,7 +175,27 @@ CSystemImageList::~CSystemImageList()
 	m_pImageList = 0;
 }
 
-#ifndef __WXMSW__
+#ifdef __WXGTK__
+wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
+{
+	GFile * file = g_file_new_for_path(fileName.utf8_str().data());
+	GFileInfo * fileInfo = g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+	GIcon * fileIcon = g_file_info_get_icon(fileInfo);
+	const gchar * const * iconNames = g_themed_icon_get_names(G_THEMED_ICON(fileIcon));
+	wxBitmap bmp = wxArtProvider::GetBitmap(wxString::FromUTF8(iconNames[0]),
+											wxART_OTHER,
+											CThemeProvider::GetIconSize(iconSizeSmall));
+	g_object_unref(fileIcon);
+	g_object_unref(fileInfo);
+	g_object_unref(file);
+	return bmp;
+}
+//#elif defined(__WXMAC__)
+//wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
+//{
+//	 NSImage img = [[NSWorkspace sharedWorkspace] iconForFileType:ext]
+//}
+#else
 // This function converts to the right size with the given background colour
 wxBitmap PrepareIcon(wxIcon icon, wxSize size)
 {
@@ -159,6 +204,27 @@ wxBitmap PrepareIcon(wxIcon icon, wxSize size)
 	wxBitmap bmp;
 	bmp.CopyFromIcon(icon);
 	return bmp.ConvertToImage().Rescale(size.GetWidth(), size.GetHeight());
+}
+
+wxBitmap GetFileIcon(const wxString & /*fileName*/, const wxString & ext)
+{
+	wxFileType *pType = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
+	if (!pType)
+		return wxBitmap();
+
+	wxBitmap bmp;
+	wxIconLocation loc;
+	if (pType->GetIcon(&loc) && loc.IsOk())
+	{
+		wxLogNull nul;
+		wxIcon newIcon(loc);
+
+		if (newIcon.Ok())
+			bmp = PrepareIcon(newIcon, CThemeProvider::GetIconSize(iconSizeSmall));
+	}
+	delete pType;
+
+	return bmp;
 }
 #endif
 
@@ -216,30 +282,14 @@ int CSystemImageList::GetIconIndex(iconType type, const wxString& fileName /*=_T
 			return cacheIter->second;
 	}
 
-	wxFileType *pType = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
-	if (!pType)
-	{
-		m_iconCache[ext] = icon;
-		return icon;
+	wxBitmap bmp = GetFileIcon(fileName, ext);
+	if (bmp.IsOk()) {
+		if (symlink)
+			OverlaySymlink(bmp);
+		int index = m_pImageList->Add(bmp);
+		if (index > 0)
+			icon = index;
 	}
-
-	wxIconLocation loc;
-	if (pType->GetIcon(&loc) && loc.IsOk())
-	{
-		wxLogNull nul;
-		wxIcon newIcon(loc);
-
-		if (newIcon.Ok())
-		{
-			wxBitmap bmp = PrepareIcon(newIcon, CThemeProvider::GetIconSize(iconSizeSmall));
-			if (symlink)
-				OverlaySymlink(bmp);
-			int index = m_pImageList->Add(bmp);
-			if (index > 0)
-				icon = index;
-		}
-	}
-	delete pType;
 
 	if (symlink)
 		m_iconCache[ext] = icon;
