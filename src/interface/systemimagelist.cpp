@@ -17,6 +17,11 @@
 #include "themeprovider.h"
 #include <wx/rawbmp.h>
 #endif
+#ifdef __WXGTK__
+#include <gio/gio.h>
+#include <gtk/gtk.h>
+#include <wx/dynlib.h>
+#endif
 
 wxImageListEx::wxImageListEx()
 	: wxImageList()
@@ -63,7 +68,14 @@ static void OverlaySymlink(wxBitmap& bmp)
 {
 	// This is ugly, but apparently needed so that the data is _really_ in the right internal format
 	bmp = bmp.ConvertToImage();
-	wxBitmap symlink = wxArtProvider::GetBitmap(_T("ART_SYMLINK"),  wxART_OTHER, wxSize(bmp.GetWidth(), bmp.GetHeight())).ConvertToImage();
+
+	wxBitmap symlink;
+#ifdef __WXGTK__
+	symlink = wxArtProvider::GetBitmap(_T("emblem-symbolic-link"), wxART_OTHER, wxSize(bmp.GetWidth(), bmp.GetHeight()));
+#endif
+	if (!symlink.IsOk())
+		symlink = wxArtProvider::GetBitmap(_T("ART_SYMLINK"), wxART_OTHER, wxSize(bmp.GetWidth(), bmp.GetHeight()));
+	symlink = symlink.ConvertToImage();
 
 	wxAlphaPixelData target(bmp);
 	wxAlphaPixelData source(symlink);
@@ -119,9 +131,21 @@ bool CSystemImageList::CreateSystemImageList(int size)
 #else
 	m_pImageList = new wxImageListEx(size, size);
 
-	wxBitmap file = wxArtProvider::GetBitmap(_T("ART_FILE"),  wxART_OTHER, wxSize(size, size));
-	wxBitmap folderclosed = wxArtProvider::GetBitmap(_T("ART_FOLDERCLOSED"),  wxART_OTHER, wxSize(size, size));
-	wxBitmap folder = wxArtProvider::GetBitmap(_T("ART_FOLDER"),  wxART_OTHER, wxSize(size, size));
+	wxBitmap file;
+	wxBitmap folderclosed;
+	wxBitmap folder;
+#ifdef __WXGTK__
+	file = wxArtProvider::GetBitmap(_T("unknown"),  wxART_OTHER, wxSize(size, size));
+	folderclosed = wxArtProvider::GetBitmap(_T("folder"),  wxART_OTHER, wxSize(size, size));
+	folder = wxArtProvider::GetBitmap(_T("folder-open"),  wxART_OTHER, wxSize(size, size));
+#endif
+	if (!file.IsOk())
+		file = wxArtProvider::GetBitmap(_T("ART_FILE"),  wxART_OTHER, wxSize(size, size));
+	if (!folderclosed.IsOk())
+		folderclosed = wxArtProvider::GetBitmap(_T("ART_FOLDERCLOSED"),  wxART_OTHER, wxSize(size, size));
+	if (!folder.IsOk())
+		folder = wxArtProvider::GetBitmap(_T("ART_FOLDER"),  wxART_OTHER, wxSize(size, size));
+
 	m_pImageList->Add(file);
 	m_pImageList->Add(folderclosed);
 	m_pImageList->Add(folder);
@@ -150,9 +174,95 @@ CSystemImageList::~CSystemImageList()
 	m_pImageList = 0;
 }
 
-#ifndef __WXMSW__
+#ifdef __WXGTK__
+
+typedef enum {
+    GNOME_ICON_LOOKUP_FLAGS_NONE = 0,
+    GNOME_ICON_LOOKUP_FLAGS_EMBEDDING_TEXT = 1<<0,
+    GNOME_ICON_LOOKUP_FLAGS_SHOW_SMALL_IMAGES_AS_THEMSELVES = 1<<1,
+    GNOME_ICON_LOOKUP_FLAGS_ALLOW_SVG_AS_THEMSELVES = 1<<2
+} GnomeIconLookupFlags;
+
+typedef enum {
+    GNOME_ICON_LOOKUP_RESULT_FLAGS_NONE = 0,
+    GNOME_ICON_LOOKUP_RESULT_FLAGS_THUMBNAIL = 1<<0
+} GnomeIconLookupResultFlags;
+
+struct Gnome {
+    Gnome():
+        libGnomeVfs(_T("libgnomevfs-2.so.0"), wxDL_QUIET),
+        libGnomeUi(_T("libgnomeui-2.so.0"), wxDL_QUIET),
+        gnome_vfs_init((Gnome_Vfs_Init)libGnomeVfs.GetSymbol(_T("gnome_vfs_init"))),
+        vfs_get_mime_type_for_name((Gnome_Vfs_Get_Mime_Type_For_Name)libGnomeVfs.GetSymbol(_T("gnome_vfs_get_mime_type_for_name"))),
+        icon_lookup((Gnome_Icon_Lookup)libGnomeUi.GetSymbol(_T("gnome_icon_lookup")))
+    {
+        if (!gnome_vfs_init || !gnome_vfs_init())
+            icon_lookup = NULL;
+    }
+
+    typedef int (*Gnome_Vfs_Init)(void);
+    typedef const char * (*Gnome_Vfs_Get_Mime_Type_For_Name)(const char *filename);
+    typedef char * (*Gnome_Icon_Lookup)(GtkIconTheme *icon_theme,
+                                        const char *file_uri,
+                                        void/*GnomeThumbnailFactory*/ *thumbnail_factory,
+                                        const char *custom_icon,
+                                        void/*GnomeVFSFileInfo*/ *file_info,
+                                        const char *mime_type,
+                                        GnomeIconLookupFlags flags,
+                                        GnomeIconLookupResultFlags *result);
+    wxDynamicLibrary libGnomeVfs;
+    wxDynamicLibrary libGnomeUi;
+    Gnome_Vfs_Init gnome_vfs_init;
+    Gnome_Vfs_Get_Mime_Type_For_Name vfs_get_mime_type_for_name;
+    Gnome_Icon_Lookup icon_lookup;
+} static gnome;
+
+static wxBitmap GetNativeFileIcon(const wxString & fileName, const wxString & ext)
+{
+	wxString iconName;
+	if (gnome.icon_lookup)
+	{
+		GtkIconTheme *theme = gtk_icon_theme_get_default();
+		const wxCharBuffer name = fileName.ToUTF8();
+		const char * mimetype = gnome.vfs_get_mime_type_for_name(name.data());
+		char * res = gnome.icon_lookup(theme, name.data(), NULL, NULL, NULL, mimetype, GNOME_ICON_LOOKUP_FLAGS_NONE, NULL);
+		if (res)
+			iconName = wxString::FromUTF8(res);
+		g_free(res);
+	}
+	else
+	{
+		GFile * file = g_file_new_for_path(fileName.ToUTF8().data());
+        GFileInfo * fileInfo = file ? g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL) : NULL;
+        GIcon * fileIcon = fileInfo ? g_file_info_get_icon(fileInfo) : NULL;
+        const gchar * const * iconNames = fileIcon ? g_themed_icon_get_names(G_THEMED_ICON(fileIcon)) : NULL;
+		if (iconNames)
+			iconName = wxString::FromUTF8(iconNames[0]);
+        if (fileInfo)
+            g_object_unref(fileInfo);
+        if (file)
+            g_object_unref(file);
+	}
+
+	wxSize iconSize = CThemeProvider::GetIconSize(iconSizeSmall);
+    if (iconName.IsEmpty())
+        return wxBitmap();
+    if (iconName.GetChar(0) == '/')
+		return wxImage(iconName).Rescale(iconSize.GetWidth(), iconSize.GetHeight());
+    return wxArtProvider::GetBitmap(iconName, wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
+}
+
+#else
+
+static wxBitmap GetNativeFileIcon(const wxString & /*fileName*/, const wxString & /*ext*/)
+{
+    return wxBitmap();
+}
+
+#endif
+
 // This function converts to the right size with the given background colour
-wxBitmap PrepareIcon(wxIcon icon, wxSize size)
+static wxBitmap PrepareIcon(wxIcon icon, wxSize size)
 {
 	if (icon.GetWidth() == size.GetWidth() && icon.GetHeight() == size.GetHeight())
 		return icon;
@@ -160,7 +270,27 @@ wxBitmap PrepareIcon(wxIcon icon, wxSize size)
 	bmp.CopyFromIcon(icon);
 	return bmp.ConvertToImage().Rescale(size.GetWidth(), size.GetHeight());
 }
-#endif
+
+static wxBitmap GetFileIcon(const wxString & /*fileName*/, const wxString & ext)
+{
+	wxFileType *pType = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
+	if (!pType)
+		return wxBitmap();
+
+	wxBitmap bmp;
+	wxIconLocation loc;
+	if (pType->GetIcon(&loc) && loc.IsOk())
+	{
+		wxLogNull nul;
+		wxIcon newIcon(loc);
+
+		if (newIcon.Ok())
+			bmp = PrepareIcon(newIcon, CThemeProvider::GetIconSize(iconSizeSmall));
+	}
+	delete pType;
+
+	return bmp;
+}
 
 int CSystemImageList::GetIconIndex(enum filetype type, const wxString& fileName /*=_T("")*/, bool physical /*=true*/, bool symlink /*=false*/)
 {
@@ -216,30 +346,16 @@ int CSystemImageList::GetIconIndex(enum filetype type, const wxString& fileName 
 			return cacheIter->second;
 	}
 
-	wxFileType *pType = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
-	if (!pType)
-	{
-		m_iconCache[ext] = icon;
-		return icon;
+    wxBitmap bmp = GetNativeFileIcon(fileName, ext);
+    if (!bmp.IsOk())
+        bmp = GetFileIcon(fileName, ext);
+	if (bmp.IsOk()) {
+		if (symlink)
+			OverlaySymlink(bmp);
+		int index = m_pImageList->Add(bmp);
+		if (index > 0)
+			icon = index;
 	}
-
-	wxIconLocation loc;
-	if (pType->GetIcon(&loc) && loc.IsOk())
-	{
-		wxLogNull nul;
-		wxIcon newIcon(loc);
-
-		if (newIcon.Ok())
-		{
-			wxBitmap bmp = PrepareIcon(newIcon, CThemeProvider::GetIconSize(iconSizeSmall));
-			if (symlink)
-				OverlaySymlink(bmp);
-			int index = m_pImageList->Add(bmp);
-			if (index > 0)
-				icon = index;
-		}
-	}
-	delete pType;
 
 	if (symlink)
 		m_iconCache[ext] = icon;
