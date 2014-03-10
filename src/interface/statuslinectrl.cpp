@@ -148,7 +148,7 @@ void CStatusLineCtrl::OnTimer(wxTimerEvent& event)
 
 	//Update fields
 	int elapsed_seconds = 0;
-	if (m_pStatus->started.IsValid())
+    if (m_pStatus && m_pStatus->started.IsValid())
 		elapsed_seconds = wxDateTime::Now().Subtract(m_pStatus->started).GetSeconds().GetLo(); // Assume GetHi is always 0
 
 	wxFileOffset rate;
@@ -158,7 +158,7 @@ void CStatusLineCtrl::OnTimer(wxTimerEvent& event)
 		rate = GetSpeed(elapsed_seconds);
 
 	CSizeFormat::_format format = static_cast<CSizeFormat::_format>(COptions::Get()->GetOptionVal(OPTION_SIZE_FORMAT));
-	const wxString bytestr = CSizeFormat::Format(m_pStatus->currentOffset, true, format,
+    const wxString bytestr = CSizeFormat::Format(m_pStatus ? m_pStatus->currentOffset : 0, true, format,
 												 COptions::Get()->GetOptionVal(OPTION_SIZE_USETHOUSANDSEP) != 0,
 												 COptions::Get()->GetOptionVal(OPTION_SIZE_DECIMALPLACES));
 	if (elapsed_seconds && rate > -1)
@@ -175,7 +175,7 @@ void CStatusLineCtrl::OnTimer(wxTimerEvent& event)
 		m_bytes_and_rateLabel->SetLabel(wxString::Format(_("%s (? B/s)"), bytestr.c_str()));
 
 	wxFileOffset left = -1;
-	if (m_pStatus->totalSize > 0 && elapsed_seconds && rate > 0)
+    if (m_pStatus && m_pStatus->totalSize > 0 && elapsed_seconds && rate > 0)
 	{
 		wxFileOffset r = m_pStatus->totalSize - m_pStatus->currentOffset;
 		left = r / rate + 1;
@@ -190,7 +190,7 @@ void CStatusLineCtrl::OnTimer(wxTimerEvent& event)
 	m_remainingLabel->SetLabel(left != -1 ? wxTimeSpan(0, 0, left).Format(_("%H:%M:%S left")).c_str()
 										  : _("--:--:-- left"));
 
-	if (m_pStatus->totalSize > 0) {
+    if (m_pStatus && m_pStatus->totalSize > 0) {
 		m_progressBar->SetRange(m_pStatus->totalSize);
 		m_progressBar->SetValue(m_pStatus->currentOffset);
 
