@@ -182,9 +182,11 @@ wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
 	GFileInfo * fileInfo = g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL);
 	GIcon * fileIcon = g_file_info_get_icon(fileInfo);
 	const gchar * const * iconNames = g_themed_icon_get_names(G_THEMED_ICON(fileIcon));
-	wxBitmap bmp = wxArtProvider::GetBitmap(wxString::FromUTF8(iconNames[0]),
-											wxART_OTHER,
-											CThemeProvider::GetIconSize(iconSizeSmall));
+	wxBitmap bmp;
+	if (iconNames)
+		bmp = wxArtProvider::GetBitmap(wxString::FromUTF8(iconNames[0]),
+									   wxART_OTHER,
+									   CThemeProvider::GetIconSize(iconSizeSmall));
 	g_object_unref(fileIcon);
 	g_object_unref(fileInfo);
 	g_object_unref(file);
