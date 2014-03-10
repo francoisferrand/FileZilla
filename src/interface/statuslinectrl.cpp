@@ -120,7 +120,7 @@ void CStatusLineCtrl::SetTransferStatus(const CTransferStatus* pStatus)
 	Refresh(false);
 }
 
-void CStatusLineCtrl::OnTimer(wxTimerEvent& event)
+void CStatusLineCtrl::OnTimer(wxTimerEvent&)
 {
 	bool changed;
 	CTransferStatus status;
@@ -230,11 +230,9 @@ wxFileOffset CStatusLineCtrl::GetSpeed(int elapsedSeconds)
 		}
 	}
 
-	_past_data forget = {0};
-	for (int i = m_past_data_index; i >= 0; i--)
-	{
-		if (m_past_data[i].elapsed < elapsedSeconds)
-		{
+	_past_data forget;
+	for (int i = m_past_data_index; i >= 0; i--) {
+		if (m_past_data[i].elapsed < elapsedSeconds) {
 			forget = m_past_data[i];
 			break;
 		}

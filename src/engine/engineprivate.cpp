@@ -32,7 +32,7 @@ std::list<CFileZillaEnginePrivate*> CFileZillaEnginePrivate::m_engineList;
 int CFileZillaEnginePrivate::m_activeStatus[2] = {0, 0};
 std::list<CFileZillaEnginePrivate::t_failedLogins> CFileZillaEnginePrivate::m_failedLogins;
 
-DEFINE_EVENT_TYPE(fzEVT_ENGINE_NOTIFICATION);
+DEFINE_EVENT_TYPE(fzEVT_ENGINE_NOTIFICATION)
 
 wxFzEngineEvent::wxFzEngineEvent(int id, enum EngineNotificationType eventType, int data /*=0*/) : wxEvent(id, fzEVT_ENGINE_NOTIFICATION)
 {
@@ -300,7 +300,7 @@ int CFileZillaEnginePrivate::Disconnect(const CDisconnectCommand &command)
 	return res;
 }
 
-int CFileZillaEnginePrivate::Cancel(const CCancelCommand &command)
+int CFileZillaEnginePrivate::Cancel(const CCancelCommand &)
 {
 	if (!IsBusy())
 		return FZ_REPLY_OK;
@@ -370,7 +370,7 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 						if (!avoid)
 						{
 							m_lastListDir = pListing->path;
-							m_lastListTime = wxDateTime::Now();
+							m_lastListTime = CDateTime::Now();
 							CDirectoryListingNotification *pNotification = new CDirectoryListingNotification(pListing->path);
 							AddNotification(pNotification);
 						}
@@ -510,7 +510,7 @@ void CFileZillaEnginePrivate::SendDirectoryListingNotification(const CServerPath
 	{
 		CDirectoryListingNotification *pNotification = new CDirectoryListingNotification(path, false, true);
 		AddNotification(pNotification);
-		m_lastListTime = CTimeEx::Now();
+		m_lastListTime = CMonotonicTime::Now();
 
 		// On failed messages, we don't notify other engines
 		return;
@@ -518,7 +518,7 @@ void CFileZillaEnginePrivate::SendDirectoryListingNotification(const CServerPath
 
 	CDirectoryCache cache;
 
-	CTimeEx changeTime;
+	CMonotonicTime changeTime;
 	if (!cache.GetChangeTime(changeTime, *pOwnServer, path))
 		return;
 
@@ -600,7 +600,7 @@ unsigned int CFileZillaEnginePrivate::GetRemainingReconnectDelay(const CServer& 
 	return 0;
 }
 
-void CFileZillaEnginePrivate::OnTimer(wxTimerEvent& event)
+void CFileZillaEnginePrivate::OnTimer(wxTimerEvent&)
 {
 	if (!m_pCurrentCommand || m_pCurrentCommand->GetId() != cmd_connect)
 	{

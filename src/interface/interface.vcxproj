@@ -179,6 +179,7 @@
     <ClCompile Include="FileZilla.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="file_utils.cpp" />
     <ClCompile Include="filter.cpp" />
     <ClCompile Include="filter_conditions_dialog.cpp" />
     <ClCompile Include="filteredit.cpp" />
@@ -247,7 +248,8 @@
     <ClCompile Include="timeformatting.cpp" />
     <ClCompile Include="toolbar.cpp" />
     <ClCompile Include="treectrlex.cpp" />
-    <ClCompile Include="updatewizard.cpp" />
+    <ClCompile Include="updater.cpp" />
+    <ClCompile Include="update_dialog.cpp" />
     <ClCompile Include="verifycertdialog.cpp" />
     <ClCompile Include="verifyhostkeydialog.cpp" />
     <ClCompile Include="view.cpp" />
@@ -286,6 +288,7 @@
     <ClInclude Include="filelist_statusbar.h" />
     <ClInclude Include="filelistctrl.h" />
     <ClInclude Include="filezillaapp.h" />
+    <ClInclude Include="file_utils.h" />
     <ClInclude Include="filter.h" />
     <ClInclude Include="filter_conditions_dialog.h" />
     <ClInclude Include="filteredit.h" />
@@ -357,7 +360,8 @@
     <ClInclude Include="timeformatting.h" />
     <ClInclude Include="toolbar.h" />
     <ClInclude Include="treectrlex.h" />
-    <ClInclude Include="updatewizard.h" />
+    <ClInclude Include="updater.h" />
+    <ClInclude Include="update_dialog.h" />
     <ClInclude Include="verifycertdialog.h" />
     <ClInclude Include="verifyhostkeydialog.h" />
     <ClInclude Include="view.h" />

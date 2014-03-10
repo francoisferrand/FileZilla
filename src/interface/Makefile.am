@@ -38,6 +38,7 @@ filezilla_SOURCES = aboutdialog.cpp \
 		filter.cpp \
 		filter_conditions_dialog.cpp \
 		filteredit.cpp \
+		file_utils.cpp \
 		import.cpp \
 		inputdialog.cpp \
 		ipcmutex.cpp \
@@ -104,7 +105,8 @@ filezilla_SOURCES = aboutdialog.cpp \
 		timeformatting.cpp \
 		toolbar.cpp \
 		treectrlex.cpp \
-		updatewizard.cpp \
+		updater.cpp \
+		update_dialog.cpp \
 		verifycertdialog.cpp \
 		verifyhostkeydialog.cpp \
 		view.cpp \
@@ -150,6 +152,7 @@ noinst_HEADERS = aboutdialog.h \
 		 filter.h \
 		 filter_conditions_dialog.h \
 		 filteredit.h \
+		 file_utils.h \
 		 import.h \
 		 inputdialog.h \
 		 ipcmutex.h \
@@ -217,7 +220,8 @@ noinst_HEADERS = aboutdialog.h \
 		 timeformatting.h \
 		 toolbar.h \
 		 treectrlex.h \
-		 updatewizard.h \
+		 updater.h \
+		 update_dialog.h \
 		 verifycertdialog.h \
 		 verifyhostkeydialog.h \
 		 view.h \

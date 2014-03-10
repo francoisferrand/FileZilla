@@ -1296,7 +1296,7 @@ public:
 	// Listing index for list_mdtm
 	int mdtm_index;
 
-	CTimeEx m_time_before_locking;
+	CMonotonicTime m_time_before_locking;
 };
 
 enum listStates
@@ -1412,7 +1412,7 @@ int CFtpControlSocket::ListSubcommandResult(int prevResult)
 			if (!TryLockCache(lock_list, m_CurrentPath))
 			{
 				pData->opState = list_waitlock;
-				pData->m_time_before_locking = CTimeEx::Now();
+				pData->m_time_before_locking = CMonotonicTime::Now();
 				return FZ_REPLY_WOULDBLOCK;
 			}
 		}
@@ -1514,7 +1514,7 @@ int CFtpControlSocket::ListSubcommandResult(int prevResult)
 			{
 				CDirectoryListing listing;
 				listing.path = m_CurrentPath;
-				listing.m_firstListTime = CTimeEx::Now();
+				listing.m_firstListTime = CMonotonicTime::Now();
 
 				if (pData->viewHiddenCheck)
 				{
@@ -1694,7 +1694,7 @@ int CFtpControlSocket::ListParseResponse()
 		if (res && date.IsValid())
 		{
 			wxASSERT(pData->directoryListing[pData->mdtm_index].has_date());
-			wxDateTime listTime = pData->directoryListing[pData->mdtm_index].time;
+			wxDateTime listTime = pData->directoryListing[pData->mdtm_index].time.Degenerate();
 			listTime -= wxTimeSpan(0, m_pCurrentServer->GetTimezoneOffset(), 0);
 
 			int serveroffset = (date - listTime).GetSeconds().GetLo();
@@ -1716,12 +1716,8 @@ int CFtpControlSocket::ListParseResponse()
 
 			wxTimeSpan span(0, 0, offset);
 			const int count = pData->directoryListing.GetCount();
-			for (int i = 0; i < count; ++i)
-			{
+			for (int i = 0; i < count; ++i) {
 				CDirentry& entry = pData->directoryListing[i];
-				if (!entry.has_time())
-					continue;
-
 				entry.time += span;
 			}
 
@@ -1760,10 +1756,8 @@ int CFtpControlSocket::ListCheckTimezoneDetection(CDirectoryListing& listing)
 		else
 		{
 			const int count = listing.GetCount();
-			for (int i = 0; i < count; ++i)
-			{
-				if (!listing[i].is_dir() && listing[i].has_time())
-				{
+			for (int i = 0; i < count; ++i) {
+				if (!listing[i].is_dir() && listing[i].has_time()) {
 					pData->opState = list_mdtm;
 					pData->directoryListing = listing;
 					pData->mdtm_index = i;
@@ -2357,11 +2351,13 @@ int CFtpControlSocket::FileTransferParseResponse()
 		{
 			wxDateTime date;
 			const wxChar *res = date.ParseFormat(m_Response.Mid(4), _T("%Y%m%d%H%M%S"));
-			if (!res || !date.IsValid())
+			CDateTime::Accuracy a = CDateTime::seconds;
+			if (!res || !date.IsValid()) {
 				res = date.ParseFormat(m_Response.Mid(4), _T("%Y%m%d%H%M"));
-			if (res && date.IsValid())
-			{
-				pData->fileTime = date.FromTimezone(wxDateTime::GMT0);
+				a = CDateTime::minutes;
+			}
+			if (res && date.IsValid()) {
+				pData->fileTime = CDateTime( date.FromTimezone(wxDateTime::UTC), a );
 				pData->fileTime += wxTimeSpan(0, m_pCurrentServer->GetTimezoneOffset(), 0);
 			}
 		}
@@ -2533,9 +2529,8 @@ int CFtpControlSocket::FileTransferSubcommandResult(int prevResult)
 			if (!pData->download &&
 				CServerCapabilities::GetCapability(*m_pCurrentServer, mfmt_command) == yes)
 			{
-				wxDateTime mtime = CLocalFileSystem::GetModificationTime(pData->localFile);
-				if (mtime.IsValid())
-				{
+				CDateTime mtime = CLocalFileSystem::GetModificationTime(pData->localFile);
+				if (mtime.IsValid()) {
 					pData->fileTime = mtime;
 					pData->opState = filetransfer_mfmt;
 					return SendNextCommand();
@@ -2722,9 +2717,8 @@ int CFtpControlSocket::FileTransferSend()
 							if (m_pEngine->GetOptions()->GetOptionVal(OPTION_PRESERVE_TIMESTAMPS) &&
 								CServerCapabilities::GetCapability(*m_pCurrentServer, mfmt_command) == yes)
 							{
-								wxDateTime mtime = CLocalFileSystem::GetModificationTime(pData->localFile);
-								if (mtime.IsValid())
-								{
+								CDateTime mtime = CLocalFileSystem::GetModificationTime(pData->localFile);
+								if (mtime.IsValid()) {
 									pData->fileTime = mtime;
 									pData->opState = filetransfer_mfmt;
 									return SendNextCommand();
@@ -2799,7 +2793,7 @@ int CFtpControlSocket::FileTransferSend()
 	case filetransfer_mfmt:
 		{
 			cmd = _T("MFMT ");
-			cmd += pData->fileTime.ToTimezone(wxDateTime::GMT0).Format(_T("%Y%m%d%H%M%S "));
+			cmd += pData->fileTime.Degenerate().ToTimezone(wxDateTime::UTC).Format(_T("%Y%m%d%H%M%S "));
 			cmd += pData->remotePath.FormatFilename(pData->remoteFile, !pData->tryAbsolutePath);
 
 			break;
@@ -2911,7 +2905,7 @@ bool CFtpControlSocket::SetAsyncRequestReply(CAsyncRequestNotification *pNotific
 				{
 					pData->remoteFile = pFileExistsNotification->newName;
 					pData->remoteFileSize = -1;
-					pData->fileTime = wxDateTime();
+					pData->fileTime = CDateTime();
 
 					CDirectoryCache cache;
 

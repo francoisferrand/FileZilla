@@ -137,6 +137,7 @@
   !define MUI_FINISHPAGE_RUN
   !define MUI_FINISHPAGE_RUN_FUNCTION CustomFinishRun
   !define MUI_FINISHPAGE_RUN_TEXT "&Start FileZilla now"
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW PageFinishPre
   !insertmacro MUI_PAGE_FINISH
 
   !define MUI_PAGE_CUSTOMFUNCTION_PRE un.ConfirmPagePre
@@ -172,8 +173,10 @@ Function UpdateShellVarContext
 
   ${If} $ALL_USERS == 1
     SetShellVarContext all
+    DetailPrint "Installing for all users"
   ${Else}
     SetShellVarContext current
+    DetailPrint "Installing for current user"
   ${EndIf}
 
 FunctionEnd
@@ -373,6 +376,7 @@ UAC_Success:
   ${If} $PREVIOUS_VERSION == ""
 
     StrCpy $PERFORM_UPDATE 0
+    DetailPrint "No previous version of FileZilla was found"
 
   ${Else}
 
@@ -380,9 +384,8 @@ UAC_Success:
     Push $PREVIOUS_VERSION
     Call FZVersionCompare
 
-    ${If} $PREVIOUS_VERSION_STATE != "newer"
-      StrCpy $PERFORM_UPDATE 0
-    ${EndIf}
+    DetailPrint "Found previous version: $PREVIOUS_VERSION"
+    DetailPrint "Installing $PREVIOUS_VERSION_STATE version $VERSION"
 
   ${EndIf}
 
@@ -585,6 +588,7 @@ Function RunUninstaller
 
   ${If} $PREVIOUS_VERSION_STATE == "same"
   ${AndIf} $REINSTALL_UNINSTALL == "1"
+  ${AndIf} $PERFORM_UPDATE != "1"
     ExecWait '$R1 _?=$INSTDIR'
   ${Else}
     ExecWait '$R1 /frominstall /keepstartmenudir _?=$INSTDIR'
@@ -808,6 +812,7 @@ Function PageInstfilesShow
 
     Call RunUninstaller
     BringToFront
+    Sleep 500
 
   ${EndIf}
 
@@ -858,6 +863,7 @@ Section "FileZilla Client" SecMain
 
   SetOutPath "$INSTDIR\resources\16x16"
   File "${top_srcdir}/src\interface\resources\16x16\*.png"
+  File "${top_srcdir}/src\interface\resources\16x16\*.gif"
 
   SetOutPath "$INSTDIR\resources\32x32"
   File "${top_srcdir}/src\interface\resources\32x32\*.png"
@@ -922,6 +928,7 @@ SectionEnd
   SetOutPath "$INSTDIR\resources\${SET}"
   File "${top_srcdir}/src\interface\resources\${SET}\theme.xml"
   File /r "${top_srcdir}/src\interface\resources\${SET}\*.png"
+  File /nonfatal /r "${top_srcdir}/src\interface\resources\${SET}\*.gif"
 !macroend
 
 ${MementoSection} "Icon sets" SecIconSets
@@ -994,6 +1001,13 @@ Function PostInstPage
   StrCmp $R0 0 +2
   SetAutoClose false
 
+FunctionEnd
+
+Function PageFinishPre
+  ${If} $PERFORM_UPDATE == 1
+    UAC_unicode::Exec '' '"$INSTDIR/filezilla.exe"' '' ''
+    Quit
+  ${EndIf}
 FunctionEnd
 
 Function CustomFinishRun
@@ -1201,6 +1215,11 @@ FunctionEnd
   Delete "$INSTDIR\resources\${SET}\24x24\*.png"
   Delete "$INSTDIR\resources\${SET}\32x32\*.png"
   Delete "$INSTDIR\resources\${SET}\48x48\*.png"
+  Delete "$INSTDIR\resources\${SET}\16x16\*.gif"
+  Delete "$INSTDIR\resources\${SET}\20x20\*.gif"
+  Delete "$INSTDIR\resources\${SET}\24x24\*.gif"
+  Delete "$INSTDIR\resources\${SET}\32x32\*.gif"
+  Delete "$INSTDIR\resources\${SET}\48x48\*.gif"
   RMDir "$INSTDIR\resources\${SET}\16x16"
   RMDir "$INSTDIR\resources\${SET}\20x20"
   RMDir "$INSTDIR\resources\${SET}\24x24"
@@ -1237,6 +1256,9 @@ Section "Uninstall"
   Delete "$INSTDIR\resources\16x16\*.png"
   Delete "$INSTDIR\resources\32x32\*.png"
   Delete "$INSTDIR\resources\48x48\*.png"
+  Delete "$INSTDIR\resources\16x16\*.gif"
+  Delete "$INSTDIR\resources\32x32\*.gif"
+  Delete "$INSTDIR\resources\48x48\*.gif"
 
   !insertmacro UNINSTALLICONSET cyril
   !insertmacro UNINSTALLICONSET blukis

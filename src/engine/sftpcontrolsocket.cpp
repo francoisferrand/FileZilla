@@ -594,7 +594,7 @@ int CSftpControlSocket::ConnectSend()
 		return FZ_REPLY_ERROR;
 }
 
-void CSftpControlSocket::OnSftpEvent(wxCommandEvent& event)
+void CSftpControlSocket::OnSftpEvent(wxCommandEvent&)
 {
 	if (!m_pCurrentServer)
 		return;
@@ -1062,8 +1062,8 @@ int CSftpControlSocket::ListParseResponse(bool successful, const wxString& reply
 				{
 					date.MakeTimezone(wxDateTime::GMT0);
 					wxASSERT(pData->directoryListing[pData->mtime_index].has_date());
-					wxDateTime listTime = pData->directoryListing[pData->mtime_index].time;
-					listTime -= wxTimeSpan(0, m_pCurrentServer->GetTimezoneOffset(), 0);
+					wxDateTime listTime = pData->directoryListing[pData->mtime_index].time.Degenerate();
+					listTime += wxTimeSpan(0, -m_pCurrentServer->GetTimezoneOffset(), 0);
 
 					int serveroffset = (date - listTime).GetSeconds().GetLo();
 					if (!pData->directoryListing[pData->mtime_index].has_seconds())
@@ -1084,12 +1084,8 @@ int CSftpControlSocket::ListParseResponse(bool successful, const wxString& reply
 
 					wxTimeSpan span(0, 0, offset);
 					const int count = pData->directoryListing.GetCount();
-					for (int i = 0; i < count; ++i)
-					{
+					for (int i = 0; i < count; ++i) {
 						CDirentry& entry = pData->directoryListing[i];
-						if (!entry.has_time())
-							continue;
-
 						entry.time += span;
 					}
 
@@ -1888,7 +1884,7 @@ int CSftpControlSocket::FileTransferSend()
 
 		wxString quotedFilename = QuoteFilename(pData->remotePath.FormatFilename(pData->remoteFile, !pData->tryAbsolutePath));
 		// Y2K38
-		time_t ticks = pData->fileTime.GetTicks(); // Already in UTC
+		time_t ticks = pData->fileTime.Degenerate().GetTicks(); // Already in UTC
 		wxString seconds = wxString::Format(_T("%d"), (int)ticks);
 		if (!Send(_T("chmtime ") + seconds + _T(" ") + WildcardEscape(quotedFilename),
 			_T("chmtime ") + seconds + _T(" ") + quotedFilename))
@@ -1959,7 +1955,7 @@ int CSftpControlSocket::FileTransferParseResponse(bool successful, const wxStrin
 			}
 			if (parsed)
 			{
-				wxDateTime fileTime = wxDateTime(seconds);
+				CDateTime fileTime = CDateTime(wxDateTime(seconds), CDateTime::seconds);
 				if (fileTime.IsValid())
 					pData->fileTime = fileTime;
 			}
@@ -2086,7 +2082,7 @@ int CSftpControlSocket::Mkdir(const CServerPath& path)
 	return SendNextCommand();
 }
 
-int CSftpControlSocket::MkdirParseResponse(bool successful, const wxString& reply)
+int CSftpControlSocket::MkdirParseResponse(bool successful, const wxString&)
 {
 	LogMessage(Debug_Verbose, _T("CSftpControlSocket::MkdirParseResonse"));
 
@@ -2246,7 +2242,7 @@ int CSftpControlSocket::Delete(const CServerPath& path, const std::list<wxString
 	return SendNextCommand();
 }
 
-int CSftpControlSocket::DeleteParseResponse(bool successful, const wxString& reply)
+int CSftpControlSocket::DeleteParseResponse(bool successful, const wxString&)
 {
 	LogMessage(Debug_Verbose, _T("CSftpControlSocket::DeleteParseResponse"));
 
@@ -2373,7 +2369,7 @@ int CSftpControlSocket::RemoveDir(const CServerPath& path /*=CServerPath()*/, co
 	return FZ_REPLY_WOULDBLOCK;
 }
 
-int CSftpControlSocket::RemoveDirParseResponse(bool successful, const wxString& reply)
+int CSftpControlSocket::RemoveDirParseResponse(bool successful, const wxString&)
 {
 	LogMessage(Debug_Verbose, _T("CSftpControlSocket::RemoveDirParseResponse"));
 
@@ -2448,7 +2444,7 @@ int CSftpControlSocket::Chmod(const CChmodCommand& command)
 	return SendNextCommand();
 }
 
-int CSftpControlSocket::ChmodParseResponse(bool successful, const wxString& reply)
+int CSftpControlSocket::ChmodParseResponse(bool successful, const wxString&)
 {
 	CSftpChmodOpData *pData = static_cast<CSftpChmodOpData*>(m_pCurOpData);
 	if (!pData)
@@ -2570,7 +2566,7 @@ int CSftpControlSocket::Rename(const CRenameCommand& command)
 	return SendNextCommand();
 }
 
-int CSftpControlSocket::RenameParseResponse(bool successful, const wxString& reply)
+int CSftpControlSocket::RenameParseResponse(bool successful, const wxString&)
 {
 	CSftpRenameOpData *pData = static_cast<CSftpRenameOpData*>(m_pCurOpData);
 	if (!pData)

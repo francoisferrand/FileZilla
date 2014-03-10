@@ -491,12 +491,9 @@ int CControlSocket::CheckOverwriteFile()
 	if (pData->fileTime.IsValid())
 		pNotification->remoteTime = pData->fileTime;
 
-	if (found)
-	{
-		if (!pData->fileTime.IsValid())
-		{
-			if (entry.has_date())
-			{
+	if (found) {
+		if (!pData->fileTime.IsValid()) {
+			if (entry.has_date()) {
 				pNotification->remoteTime = entry.time;
 				pData->fileTime = entry.time;
 			}
@@ -623,7 +620,7 @@ wxCharBuffer CControlSocket::ConvToServer(const wxString& str, bool force_utf8 /
 	return buffer;
 }
 
-void CControlSocket::OnTimer(wxTimerEvent& event)
+void CControlSocket::OnTimer(wxTimerEvent&)
 {
 	int timeout = m_pEngine->GetOptions()->GetOptionVal(OPTION_TIMEOUT);
 	if (!timeout)
@@ -668,7 +665,7 @@ int CControlSocket::SendNextCommand()
 	return FZ_REPLY_ERROR;
 }
 
-int CControlSocket::ParseSubcommandResult(int prevResult)
+int CControlSocket::ParseSubcommandResult(int)
 {
 	ResetOperation(FZ_REPLY_INTERNALERROR);
 	return FZ_REPLY_ERROR;
@@ -851,7 +848,7 @@ enum CControlSocket::locking_reason CControlSocket::ObtainLockFromEvent()
 	return own->reason;
 }
 
-void CControlSocket::OnObtainLock(wxCommandEvent& event)
+void CControlSocket::OnObtainLock(wxCommandEvent&)
 {
 	if (ObtainLockFromEvent() == lock_unknown)
 		return;
@@ -1328,7 +1325,7 @@ bool CControlSocket::SetFileExistsAction(CFileExistsNotification *pFileExistsNot
 			}
 			else
 			{
-				pData->fileTime = wxDateTime();
+				pData->fileTime = CDateTime();
 				pData->remoteFileSize = -1;
 			}
 

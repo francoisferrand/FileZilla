@@ -22,7 +22,8 @@
 #include "filter.h"
 #include "netconfwizard.h"
 #include "quickconnectbar.h"
-#include "updatewizard.h"
+#include "updater.h"
+#include "update_dialog.h"
 #include "defaultfileexistsdlg.h"
 #include "loginmanager.h"
 #include "conditionaldialog.h"
@@ -63,11 +64,19 @@
 #endif
 
 #ifdef __WXGTK__
-DECLARE_EVENT_TYPE(fzEVT_TASKBAR_CLICK_DELAYED, -1);
-DEFINE_EVENT_TYPE(fzEVT_TASKBAR_CLICK_DELAYED);
+DECLARE_EVENT_TYPE(fzEVT_TASKBAR_CLICK_DELAYED, -1)
+DEFINE_EVENT_TYPE(fzEVT_TASKBAR_CLICK_DELAYED)
 #endif
 
 static int tab_hotkey_ids[10];
+
+#if FZ_MANUALUPDATECHECK
+static int GetAvailableUpdateMenuId()
+{
+	static int updateAvailableMenuId = wxNewId();
+	return updateAvailableMenuId;
+}
+#endif
 
 BEGIN_EVENT_TABLE(CMainFrame, wxFrame)
 	EVT_SIZE(CMainFrame::OnSize)
@@ -103,6 +112,7 @@ BEGIN_EVENT_TABLE(CMainFrame, wxFrame)
 	EVT_TOOL_RCLICKED(XRCID("ID_TOOLBAR_FILTER"), CMainFrame::OnFilterRightclicked)
 #if FZ_MANUALUPDATECHECK
 	EVT_MENU(XRCID("ID_CHECKFORUPDATES"), CMainFrame::OnCheckForUpdates)
+	EVT_MENU(GetAvailableUpdateMenuId(), CMainFrame::OnCheckForUpdates)
 #endif //FZ_MANUALUPDATECHECK
 	EVT_TOOL_RCLICKED(XRCID("ID_TOOLBAR_SITEMANAGER"), CMainFrame::OnSitemanagerDropdown)
 #ifdef EVT_TOOL_DROPDOWN
@@ -254,9 +264,9 @@ CMainFrame::CMainFrame()
 	m_bInitDone = false;
 	m_bQuit = false;
 	m_closeEvent = 0;
-#if FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
-	m_pUpdateWizard = 0;
-#endif //FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
+#if FZ_MANUALUPDATECHECK
+	m_pUpdater = 0;
+#endif
 	m_pQueuePane = 0;
 	m_pStatusView = 0;
 
@@ -285,9 +295,8 @@ CMainFrame::CMainFrame()
 		m_pActivityLed[1] = 0;
 	}
 
-	m_transferStatusTimer.SetOwner(this);
 	m_closeEventTimer.SetOwner(this);
-
+	
 	if (CFilterManager::HasActiveFilters(true))
 	{
 		if (COptions::Get()->GetOptionVal(OPTION_FILTERTOGGLESTATE))
@@ -314,12 +323,12 @@ CMainFrame::CMainFrame()
 	m_pTopSplitter = new CSplitterWindowEx(this, -1, wxDefaultPosition, clientSize, style);
 	m_pTopSplitter->SetMinimumPaneSize(50);
 
-	m_pBottomSplitter = new CSplitterWindowEx(m_pTopSplitter, -1, wxDefaultPosition, wxDefaultSize, wxSP_NOBORDER  | wxSP_LIVE_UPDATE);
+	m_pBottomSplitter = new CSplitterWindowEx(m_pTopSplitter, -1, wxDefaultPosition, wxDefaultSize, wxSP_NOBORDER | wxSP_LIVE_UPDATE);
 	m_pBottomSplitter->SetMinimumPaneSize(10, 60);
 	m_pBottomSplitter->SetSashGravity(1.0);
 
 	const int message_log_position = COptions::Get()->GetOptionVal(OPTION_MESSAGELOG_POSITION);
-	m_pQueueLogSplitter = new CSplitterWindowEx(m_pBottomSplitter, -1, wxDefaultPosition, wxDefaultSize, wxSP_NOBORDER  | wxSP_LIVE_UPDATE);
+	m_pQueueLogSplitter = new CSplitterWindowEx(m_pBottomSplitter, -1, wxDefaultPosition, wxDefaultSize, wxSP_NOBORDER | wxSP_LIVE_UPDATE);
 	m_pQueueLogSplitter->SetMinimumPaneSize(50, 250);
 	m_pQueueLogSplitter->SetSashGravity(0.5);
 	m_pQueuePane = new CQueue(m_pQueueLogSplitter, this, m_pAsyncRequestQueue);
@@ -444,9 +453,9 @@ CMainFrame::~CMainFrame()
 
 	CContextManager::Get()->DestroyAllStates();
 	delete m_pAsyncRequestQueue;
-#if FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
-	delete m_pUpdateWizard;
-#endif //FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
+#if FZ_MANUALUPDATECHECK
+	delete m_pUpdater;
+#endif
 
 	CEditHandler* pEditHandler = CEditHandler::Get();
 	if (pEditHandler)
@@ -514,10 +523,6 @@ bool CMainFrame::CreateMenus()
 		return false;
 
 	SetMenuBar(m_pMenuBar);
-#if FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
-	if (m_pUpdateWizard)
-		m_pUpdateWizard->DisplayUpdateAvailability(false);
-#endif //FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
 
 	return true;
 }
@@ -989,7 +994,7 @@ void CMainFrame::OnEngineEvent(wxEvent &event)
 						pListing = new CDirectoryListing;
 						pListing->path = pListingNotification->GetPath();
 						pListing->m_failed = true;
-						pListing->m_firstListTime = CTimeEx::Now();
+						pListing->m_firstListTime = CMonotonicTime::Now();
 					}
 
 					pState->SetRemoteDir(pListing, pListingNotification->Modified());
@@ -1306,8 +1311,6 @@ void CMainFrame::OnClose(wxCloseEvent &event)
 	delete m_pStateEventHandler;
 	m_pStateEventHandler = 0;
 
-	m_transferStatusTimer.Stop();
-
 	if (!m_pQueueView->Quit())
 	{
 		event.Veto();
@@ -1411,6 +1414,11 @@ void CMainFrame::OnTimer(wxTimerEvent& event)
 		evt.SetCanVeto(false);
 		AddPendingEvent(evt);
 	}
+#if FZ_MANUALUPDATECHECK
+	else if( event.GetId() == update_dialog_timer_.GetId() ) {
+		TriggerUpdateDialog();
+	}
+#endif
 }
 
 void CMainFrame::OpenSiteManager(const CServer* pServer /*=0*/)
@@ -1813,20 +1821,77 @@ void CMainFrame::OnFilter(wxCommandEvent& event)
 #if FZ_MANUALUPDATECHECK
 void CMainFrame::OnCheckForUpdates(wxCommandEvent& event)
 {
-	wxString version(PACKAGE_VERSION, wxConvLocal);
-	if (version[0] < '0' || version[0] > '9')
-	{
-		wxMessageBox(_("Executable contains no version info, cannot check for updates."), _("Check for updates failed"), wxICON_ERROR, this);
+	if( !m_pUpdater ) {
 		return;
 	}
 
-	CUpdateWizard dlg(this);
-	if (!dlg.Load())
-		return;
-
-	dlg.Run();
+	update_dialog_timer_.Stop();
+	CUpdateDialog dlg( this, *m_pUpdater );
+	dlg.ShowModal();
+	update_dialog_timer_.Stop();
 }
-#endif //FZ_MANUALUPDATECHECK
+
+void CMainFrame::UpdaterStateChanged( UpdaterState s, build const& v )
+{
+#if FZ_AUTOUPDATECHECK
+	if( !m_pMenuBar ) {
+		return;
+	}
+
+	if( s != newversion && s != newversion_ready ) {
+		return;
+	}
+	if( v.version_.empty() ) {
+		return;
+	}
+
+	wxString const name = wxString::Format(_("&Version %s"), v.version_.c_str());
+
+	wxMenuItem* pItem = m_pMenuBar->FindItem(GetAvailableUpdateMenuId());
+	if( !pItem ) {
+		wxMenu* pMenu = new wxMenu();
+		pMenu->Append(GetAvailableUpdateMenuId(), name);
+		m_pMenuBar->Append(pMenu, _("&New version available!"));
+
+		if( !update_dialog_timer_.IsRunning() ) {
+			TriggerUpdateDialog();
+		}
+	}
+	else {
+		pItem->SetItemLabel(name);
+	}
+#endif
+}
+
+void CMainFrame::TriggerUpdateDialog()
+{
+	if( CUpdateDialog::IsRunning() ) {
+		return;
+	}
+
+	if (wxDialogEx::ShownDialogs()) {
+		update_dialog_timer_.Start( 1000, true );
+		return;
+	}
+#ifdef __WXMSW__
+	// Don't check for changes if mouse is captured,
+	// e.g. if user is dragging a file
+	if (GetCapture()) {
+		update_dialog_timer_.Start( 1000, true );
+		return;
+	}
+
+	// All open menus need to be closed or app will become unresponsive.
+	::EndMenu();
+#endif
+
+	CUpdateDialog dlg(this, *m_pUpdater);
+	dlg.ShowModal();
+
+	// In case the timer was started while the dialog was up.
+	update_dialog_timer_.Stop();
+}
+#endif
 
 void CMainFrame::UpdateLayout(int layout /*=-1*/, int swap /*=-1*/, int messagelog_position /*=-1*/)
 {
@@ -2067,25 +2132,6 @@ bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site* const pData, bool newT
 
 void CMainFrame::CheckChangedSettings()
 {
-#if FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
-	if (!COptions::Get()->GetOptionVal(OPTION_DEFAULT_DISABLEUPDATECHECK) && COptions::Get()->GetOptionVal(OPTION_UPDATECHECK))
-	{
-		if (!m_pUpdateWizard)
-		{
-			m_pUpdateWizard = new CUpdateWizard(this);
-			m_pUpdateWizard->InitAutoUpdateCheck();
-		}
-	}
-	else
-	{
-		if (m_pUpdateWizard)
-		{
-			delete m_pUpdateWizard;
-			m_pUpdateWizard = 0;
-		}
-	}
-#endif //FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
-
 	UpdateLayout();
 
 	m_pAsyncRequestQueue->RecheckDefaults();
@@ -2723,16 +2769,14 @@ void CMainFrame::OnSearch(wxCommandEvent& event)
 
 void CMainFrame::PostInitialize()
 {
-#if FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
+#if FZ_MANUALUPDATECHECK
 	// Need to do this after welcome screen to avoid simultaneous display of multiple dialogs
-	if (!COptions::Get()->GetOptionVal(OPTION_DEFAULT_DISABLEUPDATECHECK) && COptions::Get()->GetOptionVal(OPTION_UPDATECHECK))
-	{
-		m_pUpdateWizard = new CUpdateWizard(this);
-		m_pUpdateWizard->InitAutoUpdateCheck();
+	if( !m_pUpdater ) {
+		update_dialog_timer_.SetOwner(this);
+		m_pUpdater = new CUpdater(*this);
+		m_pUpdater->Init();
 	}
-	else
-		m_pUpdateWizard = 0;
-#endif //FZ_MANUALUPDATECHECK && FZ_AUTOUPDATECHECK
+#endif
 
 	if (COptions::Get()->GetOptionVal(OPTION_INTERFACE_SITEMANAGER_ON_STARTUP) != 0)
 	{
@@ -2747,7 +2791,7 @@ void CMainFrame::OnMenuNewTab(wxCommandEvent& event)
 		m_pContextControl->CreateTab();
 }
 
-void CMainFrame::OnMenuCloseTab(wxCommandEvent& event)
+void CMainFrame::OnMenuCloseTab(wxCommandEvent&)
 {
 	if (!m_pContextControl)
 		return;

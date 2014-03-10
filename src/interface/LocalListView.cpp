@@ -6,6 +6,7 @@
 #include "queue.h"
 #include "filezillaapp.h"
 #include "filter.h"
+#include "file_utils.h"
 #include "inputdialog.h"
 #include <algorithm>
 #include "dndobjects.h"
@@ -356,7 +357,6 @@ bool CLocalListView::DisplayDir(wxString dirname)
 		data.label = _T("..");
 #endif
 		data.size = -1;
-		data.hasTime = 0;
 		m_fileData.push_back(data);
 		m_indexMapping.push_back(0);
 	}
@@ -411,10 +411,9 @@ regular_dir:
 #ifdef __WXMSW__
 			data.label = data.name;
 #endif
-			data.hasTime = data.lastModified.IsValid();
 
 			m_fileData.push_back(data);
-			if (!filter.FilenameFiltered(data.name, dirname, data.dir, data.size, true, data.attributes, data.hasTime ? &data.lastModified : 0))
+			if (!filter.FilenameFiltered(data.name, dirname, data.dir, data.size, true, data.attributes, data.lastModified))
 			{
 				if (data.dir)
 					totalDirCount++;
@@ -699,7 +698,6 @@ void CLocalListView::DisplayDrives()
 		data.dir = true;
 		data.icon = -2;
 		data.size = -1;
-		data.hasTime = false;
 
 		m_fileData.push_back(data);
 		m_indexMapping.push_back(count);
@@ -764,7 +762,6 @@ void CLocalListView::DisplayShares(wxString computer)
 			data.dir = true;
 			data.icon = -2;
 			data.size = -1;
-			data.hasTime = false;
 
 			m_fileData.push_back(data);
 			m_indexMapping.push_back(j++);
@@ -902,24 +899,14 @@ public:
 
 	inline int CmpTime(const CLocalFileData &data1, const CLocalFileData &data2) const
 	{
-		if (!data1.hasTime)
-		{
-			if (data2.hasTime)
-				return -1;
-			else
-				return 0;
+		if( data1.lastModified < data2.lastModified ) {
+			return -1;
 		}
-		else
-		{
-			if (!data2.hasTime)
-				return 1;
-
-			if (data1.lastModified < data2.lastModified)
-				return -1;
-			else if (data1.lastModified > data2.lastModified)
-				return 1;
-			else
-				return 0;
+		else if( data1.lastModified > data2.lastModified ) {
+			return 1;
+		}
+		else {
+			return 0;
 		}
 	}
 
@@ -1100,7 +1087,7 @@ void CLocalListView::OnContextMenu(wxContextMenuEvent& event)
 			pMenu->Enable(XRCID("ID_RENAME"), false);
 			pMenu->Enable(XRCID("ID_EDIT"), false);
 		}
-		if (data && data->flags == fill || (!index && m_hasParent))
+		if ((data && data->flags == fill) || (!index && m_hasParent))
 			fillCount++;
 		if (data && data->dir)
 			selectedDir = true;
@@ -1326,57 +1313,6 @@ bool CLocalListView::OnBeginRename(const wxListEvent& event)
 	return true;
 }
 
-bool Rename(wxWindow* parent, wxString dir, wxString from, wxString to)
-{
-	if (dir.Right(1) != _T("\\") && dir.Right(1) != _T("/"))
-		dir += wxFileName::GetPathSeparator();
-
-#ifdef __WXMSW__
-	to = to.Left(255);
-
-	if ((to.Find('/') != -1) ||
-		(to.Find('\\') != -1) ||
-		(to.Find(':') != -1) ||
-		(to.Find('*') != -1) ||
-		(to.Find('?') != -1) ||
-		(to.Find('"') != -1) ||
-		(to.Find('<') != -1) ||
-		(to.Find('>') != -1) ||
-		(to.Find('|') != -1))
-	{
-		wxMessageBox(_("Filenames may not contain any of the following characters: / \\ : * ? \" < > |"), _("Invalid filename"), wxICON_EXCLAMATION);
-		return false;
-	}
-
-	SHFILEOPSTRUCT op;
-	memset(&op, 0, sizeof(op));
-
-	from = dir + from + _T(" ");
-	from.SetChar(from.Length() - 1, '\0');
-	op.pFrom = from;
-	to = dir + to + _T(" ");
-	to.SetChar(to.Length()-1, '\0');
-	op.pTo = to;
-	op.hwnd = (HWND)parent->GetHandle();
-	op.wFunc = FO_RENAME;
-	op.fFlags = FOF_ALLOWUNDO;
-	return SHFileOperation(&op) == 0;
-#else
-	if ((to.Find('/') != -1) ||
-		(to.Find('*') != -1) ||
-		(to.Find('?') != -1) ||
-		(to.Find('<') != -1) ||
-		(to.Find('>') != -1) ||
-		(to.Find('|') != -1))
-	{
-		wxMessageBox(_("Filenames may not contain any of the following characters: / * ? < > |"), _("Invalid filename"), wxICON_EXCLAMATION);
-		return false;
-	}
-
-	return wxRename(dir + from, dir + to) == 0;
-#endif
-}
-
 bool CLocalListView::OnAcceptRename(const wxListEvent& event)
 {
 	const int index = event.GetIndex();
@@ -1401,7 +1337,7 @@ bool CLocalListView::OnAcceptRename(const wxListEvent& event)
 	if (newname == data->name)
 		return false;
 
-	if (!Rename(this, m_dir, data->name, newname))
+	if (!RenameFile(this, m_dir, data->name, newname))
 		return false;
 
 	data->name = newname;
@@ -1444,8 +1380,7 @@ void CLocalListView::ApplyCurrentFilter()
 		const CLocalFileData& data = m_fileData[i];
 		if (data.flags == fill)
 			continue;
-		if (filter.FilenameFiltered(data.name, m_dir, data.dir, data.size, true, data.attributes, data.hasTime ? &data.lastModified : 0))
-		{
+		if (filter.FilenameFiltered(data.name, m_dir, data.dir, data.size, true, data.attributes, data.lastModified)) {
 			hidden++;
 			continue;
 		}
@@ -1682,10 +1617,9 @@ void CLocalListView::RefreshFile(const wxString& file)
 	data.label = file;
 #endif
 	data.dir = type == CLocalFileSystem::dir;
-	data.hasTime = data.lastModified.IsValid();
 
 	CFilterManager filter;
-	if (filter.FilenameFiltered(data.name, m_dir, data.dir, data.size, true, data.attributes, data.hasTime ? &data.lastModified : 0))
+	if (filter.FilenameFiltered(data.name, m_dir, data.dir, data.size, true, data.attributes, data.lastModified))
 		return;
 
 	CancelLabelEdit();
@@ -1863,14 +1797,13 @@ void CLocalListView::StartComparison()
 		CLocalFileData data;
 		data.dir = false;
 		data.icon = -1;
-		data.hasTime = false;
 		data.size = -1;
 		data.flags = fill;
 		m_fileData.push_back(data);
 	}
 }
 
-bool CLocalListView::GetNextFile(wxString& name, bool& dir, wxLongLong& size, wxDateTime& date, bool &hasTime)
+bool CLocalListView::GetNextFile(wxString& name, bool& dir, wxLongLong& size, CDateTime& date)
 {
 	if (++m_comparisonIndex >= (int)m_originalIndexMapping.size())
 		return false;
@@ -1885,7 +1818,6 @@ bool CLocalListView::GetNextFile(wxString& name, bool& dir, wxLongLong& size, wx
 	dir = data.dir;
 	size = data.size;
 	date = data.lastModified;
-	hasTime = true;
 
 	return true;
 }
@@ -1944,12 +1876,8 @@ wxString CLocalListView::GetItemText(int item, unsigned int column)
 
 		return data->fileType;
 	}
-	else if (column == 3)
-	{
-		if (!data->hasTime)
-			return _T("");
-
-		return CTimeFormat::FormatDateTime(data->lastModified);
+	else if (column == 3) {
+		return CTimeFormat::Format(data->lastModified);
 	}
 	return _T("");
 }
@@ -2094,9 +2022,8 @@ void CLocalListView::OnMenuEdit(wxCommandEvent& event)
 void CLocalListView::OnMenuOpen(wxCommandEvent& event)
 {
 	long item = GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-	if (item == -1)
-	{
-		CState::OpenInFileManager(m_dir);
+	if (item == -1) {
+		OpenInFileManager(m_dir);
 		return;
 	}
 
@@ -2150,20 +2077,19 @@ void CLocalListView::OnMenuOpen(wxCommandEvent& event)
 		if (data->dir)
 		{
 			CLocalPath path(m_dir);
-			if (!path.ChangePath(data->name))
-			{
+			if (!path.ChangePath(data->name)) {
 				wxBell();
 				continue;
 			}
 
-			CState::OpenInFileManager(path.GetPath());
+			OpenInFileManager(path.GetPath());
 			continue;
 		}
 
 		wxFileName fn(m_dir, data->name);
 
 		bool program_exists = false;
-		wxString cmd = pEditHandler->GetSystemOpenCommand(fn.GetFullPath(), program_exists);
+		wxString cmd = GetSystemOpenCommand(fn.GetFullPath(), program_exists);
 		if (cmd == _T(""))
 		{
 			int pos = data->name.Find('.') == -1;

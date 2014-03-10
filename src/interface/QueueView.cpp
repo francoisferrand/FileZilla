@@ -47,7 +47,7 @@ public:
 		SetDataObject(m_pDataObject);
 	}
 
-	virtual wxDragResult OnData(wxCoord x, wxCoord y, wxDragResult def)
+	virtual wxDragResult OnData(wxCoord, wxCoord, wxDragResult def)
 	{
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -111,12 +111,12 @@ public:
 		return def;
 	}
 
-	virtual bool OnDrop(wxCoord x, wxCoord y)
+	virtual bool OnDrop(wxCoord, wxCoord)
 	{
 		return true;
 	}
 
-	virtual wxDragResult OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
+	virtual wxDragResult OnDragOver(wxCoord, wxCoord, wxDragResult def)
 	{
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -831,10 +831,15 @@ bool CQueueView::TryStartNextTransfer()
 
 	struct t_bestMatch
 	{
+		t_bestMatch()
+			: fileItem(), serverItem(), pEngineData()
+		{
+		}
+
 		CFileItem* fileItem;
 		CServerItem* serverItem;
 		t_EngineData* pEngineData;
-	} bestMatch = {0};
+	} bestMatch;
 
 	// Find inactive file. Check all servers for
 	// the file with the highest priority
@@ -1835,7 +1840,7 @@ void CQueueView::ProcessUploadFolderItems()
 	RefreshListOnly(false);
 }
 
-void CQueueView::OnFolderThreadComplete(wxCommandEvent& event)
+void CQueueView::OnFolderThreadComplete(wxCommandEvent&)
 {
 	if (!m_pFolderProcessingThread)
 		return;
@@ -1892,17 +1897,14 @@ int CQueueView::QueueFiles(const std::list<CFolderProcessingEntry*> &entryList, 
 		else
 		{
 			const t_newEntry* entry = (const t_newEntry*)*iter;
-
-			if (filters.FilenameFiltered(entry->name, pFolderScanItem->m_current_local_path.GetPath(), entry->dir, entry->size, true, entry->attributes, &entry->time))
-			{
+			if (filters.FilenameFiltered(entry->name, pFolderScanItem->m_current_local_path.GetPath(), entry->dir, entry->size, true, entry->attributes, entry->time)) {
 				delete entry;
 				continue;
 			}
 
 			pFolderScanItem->m_dir_is_empty = false;
 
-			if (entry->dir)
-			{
+			if (entry->dir) {
 				m_pFolderProcessingThread->ProcessDirectory(pFolderScanItem->m_current_local_path, pFolderScanItem->m_current_remote_path, entry->name);
 				delete entry;
 				continue;
@@ -2199,7 +2201,7 @@ void CQueueView::OnPostScroll()
 		UpdateStatusLinePositions();
 }
 
-void CQueueView::OnContextMenu(wxContextMenuEvent& event)
+void CQueueView::OnContextMenu(wxContextMenuEvent&)
 {
 	wxMenu* pMenu = wxXmlResource::Get()->LoadMenu(_T("ID_MENU_QUEUE"));
 	if (!pMenu)
@@ -2235,7 +2237,7 @@ void CQueueView::OnProcessQueue(wxCommandEvent& event)
 	SetActive(event.IsChecked());
 }
 
-void CQueueView::OnStopAndClear(wxCommandEvent& event)
+void CQueueView::OnStopAndClear(wxCommandEvent&)
 {
 	SetActive(false);
 	RemoveAll();
@@ -2372,7 +2374,7 @@ void CQueueView::RemoveQueuedFolderItem(CFolderScanItem* pFolder)
 	}
 }
 
-void CQueueView::OnRemoveSelected(wxCommandEvent& event)
+void CQueueView::OnRemoveSelected(wxCommandEvent&)
 {
 #ifndef __WXMSW__
 	// GetNextItem is O(n) if nothing is selected, GetSelectedItemCount() is O(1)
@@ -2507,9 +2509,10 @@ bool CQueueView::StopItem(CServerItem* pServerItem)
 				continue;
 			}
 		}
-		else
+		else {
 			// Unknown type, shouldn't be here.
 			wxASSERT(false);
+		}
 
 		if (RemoveItem(pItem, true, false))
 		{
@@ -2524,7 +2527,7 @@ bool CQueueView::StopItem(CServerItem* pServerItem)
 	return false;
 }
 
-void CQueueView::OnFolderThreadFiles(wxCommandEvent& event)
+void CQueueView::OnFolderThreadFiles(wxCommandEvent&)
 {
 	if (!m_pFolderProcessingThread)
 		return;
@@ -2549,7 +2552,7 @@ void CQueueView::SetDefaultFileExistsAction(enum CFileExistsNotification::Overwr
 		(*iter)->SetDefaultFileExistsAction(action, direction);
 }
 
-void CQueueView::OnSetDefaultFileExistsAction(wxCommandEvent &event)
+void CQueueView::OnSetDefaultFileExistsAction(wxCommandEvent &)
 {
 	if (!HasSelection())
 		return;
@@ -2780,7 +2783,7 @@ void CQueueView::TryRefreshListings()
 	}
 }
 
-void CQueueView::OnAskPassword(wxCommandEvent& event)
+void CQueueView::OnAskPassword(wxCommandEvent&)
 {
 	while (!m_waitingForPassword.empty())
 	{
@@ -3189,6 +3192,8 @@ void CQueueView::ActionAfter(bool warned /*=false*/)
 				wxShutdown(wxSHUTDOWN_POWEROFF);
 			break;
 		}
+#else
+		(void)warned;
 #endif
 		default:
 			break;
