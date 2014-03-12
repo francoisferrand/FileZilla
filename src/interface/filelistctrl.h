@@ -97,6 +97,21 @@ public:
             return -1;      //fewer digits
         return res;         //same length, compare first different digit in the sequence
     }
+
+    typedef int (* CompareFunction)(const wxString&, const wxString&);
+    static CompareFunction GetCmpFunction(NameSortMode mode)
+    {
+        switch (mode)
+        {
+        default:
+        case CListViewSort::namesort_caseinsensitive:
+            return &CListViewSort::CmpNoCase;
+        case CListViewSort::namesort_casesensitive:
+            return &CListViewSort::CmpCase;
+        case CListViewSort::namesort_natural:
+            return &CListViewSort::CmpNatural;
+        }
+    }
 };
 
 namespace genericTypes {
