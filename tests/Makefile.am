@@ -10,7 +10,8 @@ test_SOURCES =  test.cpp \
 		ipaddress.cpp \
 		dirparsertest.cpp \
 		localpathtest.cpp \
-		serverpathtest.cpp
+		serverpathtest.cpp \
+		cmpnatural.cpp
 
 test_CPPFLAGS = $(WX_CPPFLAGS)
 test_CXXFLAGS = $(WX_CXXFLAGS_ONLY) $(CPPUNIT_CFLAGS)
