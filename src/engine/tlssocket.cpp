@@ -192,7 +192,7 @@ void CTlsSocket::UninitSession()
 }
 
 
-void CTlsSocket::LogError(int code, const wxString& function)
+void CTlsSocket::LogError(int code, const wxString& function, MessageType logLevel)
 {
 	if (code == GNUTLS_E_WARNING_ALERT_RECEIVED || code == GNUTLS_E_FATAL_ALERT_RECEIVED)
 		PrintAlert();
@@ -203,16 +203,16 @@ void CTlsSocket::LogError(int code, const wxString& function)
 	{
 		wxString str(error, wxConvLocal);
 		if (function.IsEmpty())
-			m_pOwner->LogMessage(::Error, _T("GnuTLS error %d: %s"), code, str.c_str());
+			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d: %s"), code, str.c_str());
 		else
-			m_pOwner->LogMessage(::Error, _T("GnuTLS error %d in %s: %s"), code, function.c_str(), str.c_str());
+			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d in %s: %s"), code, function.c_str(), str.c_str());
 	}
 	else
 	{
 		if (function.IsEmpty())
-			m_pOwner->LogMessage(::Error, _T("GnuTLS error %d"), code);
+			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d"), code);
 		else
-			m_pOwner->LogMessage(::Error, _T("GnuTLS error %d in %s"), code, function.c_str());
+			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d in %s"), code, function.c_str());
 	}
 }
 
@@ -430,31 +430,17 @@ void CTlsSocket::OnSend()
 
 bool CTlsSocket::CopySessionData(const CTlsSocket* pPrimarySocket)
 {
-	size_t session_data_size = 0;
-
-	// Get buffer size
-	int res = gnutls_session_get_data(pPrimarySocket->m_session, 0, &session_data_size);
-	if (res && res != GNUTLS_E_SHORT_MEMORY_BUFFER )
-	{
-		m_pOwner->LogMessage(Debug_Warning, _T("gnutls_session_get_data on primary socket failed: %d"), res);
-		return true;
-	}
-
-	// Get session data
-	char *session_data = new char[session_data_size];
-	res = gnutls_session_get_data(pPrimarySocket->m_session, session_data, &session_data_size);
-	if (res)
-	{
-		delete [] session_data;
-		m_pOwner->LogMessage(Debug_Warning, _T("gnutls_session_get_data on primary socket failed: %d"), res);
+	gnutls_datum_t d;
+	int res = gnutls_session_get_data2(pPrimarySocket->m_session, &d);
+	if (res) {
+		m_pOwner->LogMessage(Debug_Warning, _T("gnutls_session_get_data2 on primary socket failed: %d"), res);
 		return true;
 	}
 
 	// Set session data
-	res = gnutls_session_set_data(m_session, session_data, session_data_size );
-	delete [] session_data;
-	if (res)
-	{
+	res = gnutls_session_set_data(m_session, d.data, d.size );
+	gnutls_free(d.data);
+	if (res) {
 		m_pOwner->LogMessage(Debug_Info, _T("gnutls_session_set_data failed: %d. Going to reinitialize session."), res);
 		UninitSession();
 		if (!InitSession())
@@ -471,15 +457,16 @@ bool CTlsSocket::ResumedSession() const
 	return gnutls_session_is_resumed(m_session) != 0;
 }
 
-int CTlsSocket::Handshake(const CTlsSocket* pPrimarySocket /*=0*/, bool try_resume /*=false*/)
+int CTlsSocket::Handshake(const CTlsSocket* pPrimarySocket, bool try_resume)
 {
 	m_pOwner->LogMessage(Debug_Verbose, _T("CTlsSocket::Handshake()"));
 	wxASSERT(m_session);
 
 	m_tlsState = handshake;
 
-	if (pPrimarySocket)
-	{
+	wxString hostname;
+
+	if (pPrimarySocket) {
 		// Implicitly trust certificate of primary socket
 		unsigned int cert_list_size;
 		const gnutls_datum_t* const cert_list = gnutls_certificate_get_peers(pPrimarySocket->m_session, &cert_list_size);
@@ -495,6 +482,21 @@ int CTlsSocket::Handshake(const CTlsSocket* pPrimarySocket /*=0*/, bool try_resu
 		{
 			if (!CopySessionData(pPrimarySocket))
 				return FZ_REPLY_ERROR;
+		}
+
+		hostname = pPrimarySocket->m_pSocket->GetPeerHost();
+	}
+	else {
+		hostname = m_pSocket->GetPeerHost();
+	}
+
+	if( !hostname.empty() && !IsIpAddress(hostname) ) {
+		const wxWX2MBbuf utf8 = hostname.mb_str(wxConvUTF8);
+		if( utf8 ) {
+			int res = gnutls_server_name_set( m_session, GNUTLS_NAME_DNS, utf8, strlen(utf8) );
+			if( res ) {
+				LogError(res, _T("gnutls_server_name_set"), Debug_Warning );
+			}
 		}
 	}
 
