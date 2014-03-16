@@ -18,7 +18,9 @@
 #include <wx/rawbmp.h>
 #endif
 #ifdef __WXGTK__
-#include "gio/gio.h"
+#include <gio/gio.h>
+#include <gtk/gtk.h>
+#include <wx/dynlib.h>
 #endif
 
 wxImageListEx::wxImageListEx()
@@ -176,21 +178,77 @@ CSystemImageList::~CSystemImageList()
 }
 
 #ifdef __WXGTK__
+
+typedef enum {
+    GNOME_ICON_LOOKUP_FLAGS_NONE = 0,
+    GNOME_ICON_LOOKUP_FLAGS_EMBEDDING_TEXT = 1<<0,
+    GNOME_ICON_LOOKUP_FLAGS_SHOW_SMALL_IMAGES_AS_THEMSELVES = 1<<1,
+    GNOME_ICON_LOOKUP_FLAGS_ALLOW_SVG_AS_THEMSELVES = 1<<2
+} GnomeIconLookupFlags;
+typedef enum {
+    GNOME_ICON_LOOKUP_RESULT_FLAGS_NONE = 0,
+    GNOME_ICON_LOOKUP_RESULT_FLAGS_THUMBNAIL = 1<<0
+} GnomeIconLookupResultFlags;
+struct Gnome {
+    Gnome():
+        libGnomeVfs(_T("libgnomevfs-2.so")),
+        libGnomeUi(_T("libgnomeui-2.so")),
+        gnome_vfs_init((Gnome_Vfs_Init)libGnomeVfs.GetSymbol(_T("gnome_vfs_init"))),
+        vfs_get_mime_type_for_name((Gnome_Vfs_Get_Mime_Type_For_Name)libGnomeVfs.GetSymbol(_T("gnome_vfs_get_mime_type_for_name"))),
+        icon_lookup((Gnome_Icon_Lookup)libGnomeUi.GetSymbol(_T("gnome_icon_lookup")))
+    {
+        if (!gnome_vfs_init || !gnome_vfs_init())
+            icon_lookup = NULL;
+    }
+
+    typedef int (*Gnome_Vfs_Init)(void);
+    typedef const char * (*Gnome_Vfs_Get_Mime_Type_For_Name)(const char *filename);
+    typedef char * (*Gnome_Icon_Lookup)(GtkIconTheme *icon_theme,
+                                        const char *file_uri,
+                                        void/*GnomeThumbnailFactory*/ *thumbnail_factory,
+                                        const char *custom_icon,
+                                        void/*GnomeVFSFileInfo*/ *file_info,
+                                        const char *mime_type,
+                                        GnomeIconLookupFlags flags,
+                                        GnomeIconLookupResultFlags *result);
+    wxDynamicLibrary libGnomeVfs;
+    wxDynamicLibrary libGnomeUi;
+    Gnome_Vfs_Init gnome_vfs_init;
+    Gnome_Vfs_Get_Mime_Type_For_Name vfs_get_mime_type_for_name;
+    Gnome_Icon_Lookup icon_lookup;
+} static gnome;
+
 wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
 {
-	GFile * file = g_file_new_for_path(fileName.utf8_str().data());
-	GFileInfo * fileInfo = g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL);
-	GIcon * fileIcon = g_file_info_get_icon(fileInfo);
-	const gchar * const * iconNames = g_themed_icon_get_names(G_THEMED_ICON(fileIcon));
-	wxBitmap bmp;
-	if (iconNames)
-		bmp = wxArtProvider::GetBitmap(wxString::FromUTF8(iconNames[0]),
-									   wxART_OTHER,
-									   CThemeProvider::GetIconSize(iconSizeSmall));
-	g_object_unref(fileIcon);
-	g_object_unref(fileInfo);
-	g_object_unref(file);
-	return bmp;
+	wxString iconName;
+	if (gnome.icon_lookup)
+	{
+		GtkIconTheme *theme = gtk_icon_theme_get_default();
+		const wxCharBuffer name = fileName.ToUTF8();
+		const char * mimetype = gnome.vfs_get_mime_type_for_name(name.data());
+		char * res = gnome.icon_lookup(theme, name.data(), NULL, NULL, NULL, mimetype, GNOME_ICON_LOOKUP_FLAGS_NONE, NULL);
+		if (res)
+			iconName = wxString::FromUTF8(res);
+		g_free(res);
+	}
+	else
+	{
+		GFile * file = g_file_new_for_path(fileName.ToUTF8().data());
+		GFileInfo * fileInfo = g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+		GIcon * fileIcon = g_file_info_get_icon(fileInfo);
+		const gchar * const * iconNames = g_themed_icon_get_names(G_THEMED_ICON(fileIcon));
+		if (iconNames)
+			iconName = wxString::FromUTF8(iconNames[0]);
+		g_object_unref(fileIcon);
+		g_object_unref(fileInfo);
+		g_object_unref(file);
+	}
+
+	wxSize iconSize = CThemeProvider::GetIconSize(iconSizeSmall);
+	if (!iconName.IsNull() && iconName.GetChar(0) == '/')
+		return wxImage(iconName).Rescale(iconSize.GetWidth(), iconSize.GetHeight());
+	else
+		return wxArtProvider::GetBitmap(iconName, wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
 }
 //#elif defined(__WXMAC__)
 //wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
