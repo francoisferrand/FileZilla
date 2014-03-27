@@ -1,6 +1,7 @@
 #include <filezilla.h>
 
 #include "local_filesys.h"
+#include <msgbox.h>
 
 #include <wx/dir.h>
 #include <wx/filename.h>
@@ -131,7 +132,7 @@ bool CLocalFileSystem::RecursiveDelete(std::list<wxString> dirsToVisit, wxWindow
 #else
 	if (parent)
 	{
-		if (wxMessageBox(_("Really delete all selected files and/or directories from your computer?"), _("Confirmation needed"), wxICON_QUESTION | wxYES_NO, parent) != wxYES)
+		if (wxMessageBoxEx(_("Really delete all selected files and/or directories from your computer?"), _("Confirmation needed"), wxICON_QUESTION | wxYES_NO, parent) != wxYES)
 			return true;
 	}
 

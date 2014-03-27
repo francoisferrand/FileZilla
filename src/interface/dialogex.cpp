@@ -1,5 +1,6 @@
 #include <filezilla.h>
 #include "dialogex.h"
+#include <msgbox.h>
 
 BEGIN_EVENT_TABLE(wxDialogEx, wxDialog)
 EVT_CHAR_HOOK(wxDialogEx::OnChar)
@@ -89,6 +90,27 @@ bool wxDialogEx::ReplaceControl(wxWindow* old, wxWindow* wnd)
 	wnd->SetContainingSizer(old->GetContainingSizer());
 	old->SetContainingSizer(0);
 	old->Destroy();
+
+	return true;
+}
+
+bool wxDialogEx::CanShowPopupDialog()
+{
+	if( ShownDialogs() || IsShowingMessageBox() ) {
+		return false;
+	}
+
+	wxMouseState mouseState = wxGetMouseState();
+	if( mouseState.LeftDown() || mouseState.MiddleDown() || mouseState.RightDown() ) {
+		return false;
+	}
+#ifdef __WXMSW__
+	// Don't check for changes if mouse is captured,
+	// e.g. if user is dragging a file
+	if (GetCapture()) {
+		return false;
+	}
+#endif
 
 	return true;
 }

@@ -568,7 +568,7 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 		const CServer* pServer = pState ? pState->GetServer() : 0;
 		if (!pServer)
 		{
-			wxMessageBox(_("Not connected to any server."), _("Cannot add server to Site Manager"), wxICON_EXCLAMATION);
+			wxMessageBoxEx(_("Not connected to any server."), _("Cannot add server to Site Manager"), wxICON_EXCLAMATION);
 			return;
 		}
 		OpenSiteManager(pServer);
@@ -636,7 +636,7 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 		dlg.Create(this, _T("Ciphers"), _T("Priority string:"));
 		dlg.AllowEmpty(true);
 		if (dlg.ShowModal() == wxID_OK)
-			wxMessageBox(ListTlsCiphers(dlg.GetValue()), _T("Ciphers"));
+			wxMessageBoxEx(ListTlsCiphers(dlg.GetValue()), _T("Ciphers"));
 	}
 	else if (event.GetId() == XRCID("ID_CLEARCACHE_LAYOUT"))
 	{
@@ -1122,7 +1122,7 @@ void CMainFrame::OnCancel(wxCommandEvent& event)
 	if (!pState || pState->m_pCommandQueue->Idle())
 		return;
 
-	if (wxMessageBox(_("Really cancel current operation?"), _T("FileZilla"), wxYES_NO | wxICON_QUESTION) == wxYES)
+	if (wxMessageBoxEx(_("Really cancel current operation?"), _T("FileZilla"), wxYES_NO | wxICON_QUESTION) == wxYES)
 	{
 		pState->m_pCommandQueue->Cancel();
 		pState->GetRecursiveOperationHandler()->StopRecursiveOperation();
@@ -1204,7 +1204,7 @@ bool CMainFrame::CloseDialogsAndQuit(wxCloseEvent &event)
 	}
 
 #ifdef __WXMSW__
-	// wxMessageBox does not use wxTopLevelWindow, close it too
+	// wxMessageBoxEx does not use wxTopLevelWindow, close it too
 	bool dialog = false;
 	EnumThreadWindows(GetCurrentThreadId(), FzEnumThreadWndProc, (LPARAM)&dialog);
 	if (dialog)
@@ -1573,7 +1573,7 @@ void CMainFrame::OnMenuEditSettings(wxCommandEvent& event)
 	if (oldLang != newLang)
 	{
 #ifdef __WXGTK__
-		wxMessageBox(_("FileZilla needs to be restarted for the language change to take effect."), _("Language changed"), wxICON_INFORMATION, this);
+		wxMessageBoxEx(_("FileZilla needs to be restarted for the language change to take effect."), _("Language changed"), wxICON_INFORMATION, this);
 #else
 		CreateQuickconnectBar();
 		wxGetApp().GetWrapEngine()->CheckLanguage();
@@ -1838,10 +1838,24 @@ void CMainFrame::UpdaterStateChanged( UpdaterState s, build const& v )
 		return;
 	}
 
-	if( s != newversion && s != newversion_ready ) {
+	if( s == idle ) {
+		wxMenu* m = 0;
+		wxMenuItem* pItem = m_pMenuBar->FindItem(GetAvailableUpdateMenuId(), &m);
+		if( pItem && m ) {
+			for( int i = 0; i != m_pMenuBar->GetMenuCount(); ++i ) {
+				if( m_pMenuBar->GetMenu(i) == m ) {
+					m_pMenuBar->Remove(i);
+					delete m;
+					break;
+				}
+			}
+		}
 		return;
 	}
-	if( v.version_.empty() ) {
+	else if( s != newversion && s != newversion_ready ) {
+		return;
+	}
+	else if( v.version_.empty() ) {
 		return;
 	}
 
@@ -1869,21 +1883,10 @@ void CMainFrame::TriggerUpdateDialog()
 		return;
 	}
 
-	if (wxDialogEx::ShownDialogs()) {
+	if( !wxDialogEx::CanShowPopupDialog() ) {
 		update_dialog_timer_.Start( 1000, true );
 		return;
 	}
-#ifdef __WXMSW__
-	// Don't check for changes if mouse is captured,
-	// e.g. if user is dragging a file
-	if (GetCapture()) {
-		update_dialog_timer_.Start( 1000, true );
-		return;
-	}
-
-	// All open menus need to be closed or app will become unresponsive.
-	::EndMenu();
-#endif
 
 	CUpdateDialog dlg(this, *m_pUpdater);
 	dlg.ShowModal();
@@ -2113,13 +2116,14 @@ bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site* const pData, bool newT
 	if (pData->m_localDir != _T(""))
 	{
 		CState *pState = CContextManager::Get()->GetCurrentContext();
-		bool set = pState && pState->SetLocalDir(pData->m_localDir);
+		if( pState ) {
+			pState->ClearPreviouslyVisitedLocalSubdir();
+			bool set = pState->SetLocalDir(pData->m_localDir);
 
-		if (set && pData->m_sync)
-		{
-			wxASSERT(!pData->m_remoteDir.IsEmpty());
-
-			pState->SetSyncBrowse(true, pData->m_remoteDir);
+			if (set && pData->m_sync) {
+				wxASSERT(!pData->m_remoteDir.IsEmpty());
+				pState->SetSyncBrowse(true, pData->m_remoteDir);
+			}
 		}
 	}
 
@@ -2138,6 +2142,11 @@ void CMainFrame::CheckChangedSettings()
 
 	m_pQueueView->SettingsChanged();
 	CAutoAsciiFiles::SettingsChanged();
+
+
+#if FZ_MANUALUPDATECHECK
+	m_pUpdater->Init();
+#endif
 }
 
 void CMainFrame::ConnectNavigationHandler(wxEvtHandler* handler)
@@ -2547,7 +2556,7 @@ void CMainFrame::ProcessCommandLine()
 		{
 			wxString str = _("Path not found:");
 			str += _T("\n") + local;
-			wxMessageBox(str, _("Syntax error in command line"));
+			wxMessageBoxEx(str, _("Syntax error in command line"));
 			return;
 		}
 		
@@ -2596,7 +2605,7 @@ void CMainFrame::ProcessCommandLine()
 		{
 			wxString str = _("Parameter not a valid URL");
 			str += _T("\n") + error;
-			wxMessageBox(error, _("Syntax error in command line"));
+			wxMessageBoxEx(error, _("Syntax error in command line"));
 		}
 
 		if (server.GetLogonType() == ASK ||

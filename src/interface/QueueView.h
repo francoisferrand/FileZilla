@@ -48,11 +48,12 @@ enum ActionAfterState
 	ActionAfterState_RunCommand,
 	ActionAfterState_ShowMessage,
 	ActionAfterState_PlaySound
-// On Windows, wx can reboot or shutdown the system as well.
-#ifdef __WXMSW__
+// On Windows and OS X, wx can reboot or shutdown the system as well.
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	,
 	ActionAfterState_Reboot,
-	ActionAfterState_Shutdown
+	ActionAfterState_Shutdown,
+	ActionAfterState_Sleep
 #endif
 };
 
@@ -221,8 +222,8 @@ protected:
 
 	bool IsActionAfter(enum ActionAfterState);
 	void ActionAfter(bool warned = false);
-#ifdef __WXMSW__
-	void ActionAfterWarnUser(bool shutdown);
+#if defined(__WXMSW__) || defined(__WXMAC__)
+	void ActionAfterWarnUser(ActionAfterState s);
 #endif
 
 	void ProcessNotification(t_EngineData* pEngineData, CNotification* pNotification);
@@ -277,7 +278,7 @@ protected:
 
 	enum ActionAfterState m_actionAfterState;
 	wxString m_actionAfterRunCommand;
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	wxTimer* m_actionAfterTimer;
 	wxProgressDialog* m_actionAfterWarnDialog;
 	int m_actionAfterTimerCount;

@@ -30,6 +30,10 @@
 #include "../dbus/desktop_notification.h"
 #endif
 
+#ifdef __WXMSW__
+#include <powrprof.h>
+#endif
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -80,7 +84,7 @@ public:
 		{
 			if (m_pRemoteDataObject->GetProcessId() != (int)wxGetProcessId())
 			{
-				wxMessageBox(_("Drag&drop between different instances of FileZilla has not been implemented yet."));
+				wxMessageBoxEx(_("Drag&drop between different instances of FileZilla has not been implemented yet."));
 				return wxDragNone;
 			}
 
@@ -93,7 +97,7 @@ public:
 
 			if (!pServer->EqualsNoPass(m_pRemoteDataObject->GetServer()))
 			{
-				wxMessageBox(_("Drag&drop between different servers has not been implemented yet."));
+				wxMessageBoxEx(_("Drag&drop between different servers has not been implemented yet."));
 				return wxDragNone;
 			}
 
@@ -184,6 +188,7 @@ EVT_MENU(XRCID("ID_ACTIONAFTER_SHOWMESSAGE"), CQueueView::OnActionAfter)
 EVT_MENU(XRCID("ID_ACTIONAFTER_PLAYSOUND"), CQueueView::OnActionAfter)
 EVT_MENU(XRCID("ID_ACTIONAFTER_REBOOT"), CQueueView::OnActionAfter)
 EVT_MENU(XRCID("ID_ACTIONAFTER_SHUTDOWN"), CQueueView::OnActionAfter)
+EVT_MENU(XRCID("ID_ACTIONAFTER_SLEEP"), CQueueView::OnActionAfter)
 
 EVT_COMMAND(wxID_ANY, fzEVT_ASKFORPASSWORD, CQueueView::OnAskPassword)
 
@@ -472,7 +477,7 @@ CQueueView::CQueueView(CQueue* parent, int index, CMainFrame* pMainFrame, CAsync
 	m_filesWithUnknownSize = 0;
 
 	m_actionAfterState = ActionAfterState_Disabled;
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	m_actionAfterWarnDialog = 0;
 	m_actionAfterTimer = 0;
 	m_actionAfterTimerId = -1;
@@ -1621,7 +1626,7 @@ bool CQueueView::Quit()
 	if (!m_quit)
 		m_quit = 1;
 
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	if (m_actionAfterWarnDialog)
 	{
 		m_actionAfterWarnDialog->Destroy();
@@ -1945,7 +1950,7 @@ void CQueueView::SaveQueue()
 	if (!m_queue_storage.SaveQueue(m_serverList))
 	{
 		wxString msg = wxString::Format(_("An error occurred saving the transfer queue to \"%s\".\nSome queue items might not have been saved."), m_queue_storage.GetDatabaseFilename().c_str());
-		wxMessageBox(msg, _("Error saving queue"), wxICON_ERROR);
+		wxMessageBoxEx(msg, _("Error saving queue"), wxICON_ERROR);
 	}
 }
 
@@ -1959,7 +1964,7 @@ void CQueueView::LoadQueueFromXML()
 		if (!xml.GetError().empty())
 		{
 			wxString msg = xml.GetError() + _T("\n\n") + _("The queue will not be saved.");
-			wxMessageBox(msg, _("Error loading xml file"), wxICON_ERROR);
+			wxMessageBoxEx(msg, _("Error loading xml file"), wxICON_ERROR);
 		}
 
 		return;
@@ -1980,7 +1985,7 @@ void CQueueView::LoadQueueFromXML()
 	if (!xml.Save(&error))
 	{
 		wxString msg = wxString::Format(_("Could not write \"%s\", the queue could not be saved.\n%s"), file.GetFullPath().c_str(), error.c_str());
-		wxMessageBox(msg, _("Error writing xml file"), wxICON_ERROR);
+		wxMessageBoxEx(msg, _("Error writing xml file"), wxICON_ERROR);
 	}
 }
 
@@ -2046,7 +2051,7 @@ void CQueueView::LoadQueue()
 	{
 		wxString file = CQueueStorage::GetDatabaseFilename();
 		wxString msg = wxString::Format(_("An error occurred loading the transfer queue from \"%s\".\nSome queue items might not have been restored."), file.c_str());
-		wxMessageBox(msg, _("Error loading queue"), wxICON_ERROR);
+		wxMessageBoxEx(msg, _("Error loading queue"), wxICON_ERROR);
 	}
 }
 
@@ -2216,15 +2221,16 @@ void CQueueView::OnContextMenu(wxContextMenuEvent&)
 	pMenu->Check(XRCID("ID_ACTIONAFTER_RUNCOMMAND"), IsActionAfter(ActionAfterState_RunCommand));
 	pMenu->Check(XRCID("ID_ACTIONAFTER_SHOWMESSAGE"), IsActionAfter(ActionAfterState_ShowMessage));
 	pMenu->Check(XRCID("ID_ACTIONAFTER_PLAYSOUND"), IsActionAfter(ActionAfterState_PlaySound));
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	pMenu->Check(XRCID("ID_ACTIONAFTER_REBOOT"), IsActionAfter(ActionAfterState_Reboot));
 	pMenu->Check(XRCID("ID_ACTIONAFTER_SHUTDOWN"), IsActionAfter(ActionAfterState_Shutdown));
+	pMenu->Check(XRCID("ID_ACTIONAFTER_SLEEP"), IsActionAfter(ActionAfterState_Sleep));
 #endif
 	pMenu->Enable(XRCID("ID_REMOVE"), has_selection);
 
 	pMenu->Enable(XRCID("ID_PRIORITY"), has_selection);
 	pMenu->Enable(XRCID("ID_DEFAULT_FILEEXISTSACTION"), has_selection);
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	pMenu->Enable(XRCID("ID_ACTIONAFTER"), m_actionAfterWarnDialog == NULL);
 #endif
 
@@ -2250,7 +2256,7 @@ void CQueueView::OnActionAfter(wxCommandEvent& event)
 		m_actionAfterState = ActionAfterState_Disabled;
 		m_actionAfterRunCommand = _T("");
 
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 		if (m_actionAfterWarnDialog)
 		{
 			m_actionAfterWarnDialog->Destroy();
@@ -2289,21 +2295,20 @@ void CQueueView::OnActionAfter(wxCommandEvent& event)
 
 		if (command == _T(""))
 		{
-			wxMessageBox(_("No command given, aborting."), _("Empty command"), wxICON_ERROR, m_pMainFrame);
+			wxMessageBoxEx(_("No command given, aborting."), _("Empty command"), wxICON_ERROR, m_pMainFrame);
 			m_actionAfterState = ActionAfterState_Disabled;
 			return;
 		}
 		m_actionAfterRunCommand = command;
 	}
 
-#ifdef __WXMSW__
-
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	else if (event.GetId() == XRCID("ID_ACTIONAFTER_REBOOT"))
 		m_actionAfterState = ActionAfterState_Reboot;
-
 	else if (event.GetId() == XRCID("ID_ACTIONAFTER_SHUTDOWN"))
 		m_actionAfterState = ActionAfterState_Shutdown;
-
+	else if (event.GetId() == XRCID("ID_ACTIONAFTER_SLEEP"))
+		m_actionAfterState = ActionAfterState_Sleep;
 #endif
 
 }
@@ -2918,7 +2923,7 @@ void CQueueView::OnTimer(wxTimerEvent& event)
 	const int id = event.GetId();
 	if (id == -1)
 		return;
-#ifdef __WXMSW__
+#if defined(__WXMSW__) || defined(__WXMAC__)
 	if (id == m_actionAfterTimerId)
 	{
 		OnActionAfterTimerTick();
@@ -3170,28 +3175,41 @@ void CQueueView::ActionAfter(bool warned /*=false*/)
 		}
 #ifdef __WXMSW__
 		case ActionAfterState_Reboot:
-		{
-			if (!warned)
-			{
-				ActionAfterWarnUser(false);
-				return;
-			}
-			else
-				wxShutdown(wxSHUTDOWN_REBOOT);
-			break;
-		}
-
 		case ActionAfterState_Shutdown:
-		{
-			if (!warned)
-			{
-				ActionAfterWarnUser(true);
+			if (!warned) {
+				ActionAfterWarnUser(m_actionAfterState);
 				return;
 			}
 			else
-				wxShutdown(wxSHUTDOWN_POWEROFF);
+				wxShutdown((m_actionAfterState == ActionAfterState_Reboot) ? wxSHUTDOWN_REBOOT : wxSHUTDOWN_POWEROFF);
 			break;
-		}
+		case ActionAfterState_Sleep:
+			if (!warned) {
+				ActionAfterWarnUser(m_actionAfterState);
+				return;
+			}
+			else
+				SetSuspendState(false, false, true);
+			break;
+#elif defined(__WXMAC__)
+		case ActionAfterState_Reboot:
+		case ActionAfterState_Shutdown:
+		case ActionAfterState_Sleep:
+			if (!warned) {
+				ActionAfterWarnUser(m_actionAfterState);
+				return;
+			}
+			else {
+				wxString action;
+				if( m_actionAfterState == ActionAfterState_Reboot )
+					action = _T("restart");
+				else if( m_actionAfterState == ActionAfterState_Shutdown )
+					action = _T("shut down");
+				else
+					action = _T("sleep");
+				wxExecute(_T("osascript -e 'tell application \"System Events\" to ") + action + _T("'"));
+			}
+			break;
 #else
 		(void)warned;
 #endif
@@ -3202,28 +3220,33 @@ void CQueueView::ActionAfter(bool warned /*=false*/)
 	m_actionAfterState = ActionAfterState_Disabled; // Resetting the state.
 }
 
-#ifdef __WXMSW__
-void CQueueView::ActionAfterWarnUser(bool shutdown)
+#if defined(__WXMSW__) || defined(__WXMAC__)
+void CQueueView::ActionAfterWarnUser(ActionAfterState s)
 {
 	if (m_actionAfterWarnDialog != NULL)
 		return;
 
 	wxString message;
-	if (shutdown)
+	wxString label;
+	if(s == ActionAfterState_Shutdown) {
 		message = _("The system will soon shut down unless you click Cancel.");
-	else
+		label = _("Shutdown now");
+	}
+	else if(s == ActionAfterState_Reboot) {
 		message = _("The system will soon reboot unless you click Cancel.");
+		label = _("Reboot now");
+	}
+	else {
+		message = _("Your computer will suspended unless you click Cancel.");
+		label = _("Suspend now");
+	}
 
 	m_actionAfterWarnDialog = new wxProgressDialog(_("Queue has been fully processed"), message, 150, m_pMainFrame, wxPD_CAN_ABORT | wxPD_AUTO_HIDE | wxPD_CAN_SKIP | wxPD_APP_MODAL);
 
 	// Magic id from wxWidgets' src/generic/propdlgg.cpp
 	wxWindow* pSkip = m_actionAfterWarnDialog->FindWindow(32000);
-	if (pSkip)
-	{
-		if (!shutdown)
-			pSkip->SetLabel(_("Reboot now"));
-		else
-			pSkip->SetLabel(_("Shutdown now"));
+	if (pSkip) {
+		pSkip->SetLabel(label);
 	}
 
 	CWrapEngine engine;
@@ -3275,7 +3298,7 @@ void CQueueView::OnActionAfterTimerTick()
 		ActionAfter(true);
 	}
 }
-#endif //__WXMSW__
+#endif
 
 bool CQueueView::SwitchEngine(t_EngineData** ppEngineData)
 {
