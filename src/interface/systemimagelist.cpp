@@ -185,14 +185,16 @@ typedef enum {
     GNOME_ICON_LOOKUP_FLAGS_SHOW_SMALL_IMAGES_AS_THEMSELVES = 1<<1,
     GNOME_ICON_LOOKUP_FLAGS_ALLOW_SVG_AS_THEMSELVES = 1<<2
 } GnomeIconLookupFlags;
+
 typedef enum {
     GNOME_ICON_LOOKUP_RESULT_FLAGS_NONE = 0,
     GNOME_ICON_LOOKUP_RESULT_FLAGS_THUMBNAIL = 1<<0
 } GnomeIconLookupResultFlags;
+
 struct Gnome {
     Gnome():
-        libGnomeVfs(_T("libgnomevfs-2.so")),
-        libGnomeUi(_T("libgnomeui-2.so")),
+        libGnomeVfs(_T("libgnomevfs-2.so.0"), wxDL_QUIET),
+        libGnomeUi(_T("libgnomeui-2.so.0"), wxDL_QUIET),
         gnome_vfs_init((Gnome_Vfs_Init)libGnomeVfs.GetSymbol(_T("gnome_vfs_init"))),
         vfs_get_mime_type_for_name((Gnome_Vfs_Get_Mime_Type_For_Name)libGnomeVfs.GetSymbol(_T("gnome_vfs_get_mime_type_for_name"))),
         icon_lookup((Gnome_Icon_Lookup)libGnomeUi.GetSymbol(_T("gnome_icon_lookup")))
@@ -218,7 +220,7 @@ struct Gnome {
     Gnome_Icon_Lookup icon_lookup;
 } static gnome;
 
-wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
+static wxBitmap GetNativeFileIcon(const wxString & fileName, const wxString & ext)
 {
 	wxString iconName;
 	if (gnome.icon_lookup)
@@ -234,30 +236,36 @@ wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
 	else
 	{
 		GFile * file = g_file_new_for_path(fileName.ToUTF8().data());
-		GFileInfo * fileInfo = g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL);
-		GIcon * fileIcon = g_file_info_get_icon(fileInfo);
-		const gchar * const * iconNames = g_themed_icon_get_names(G_THEMED_ICON(fileIcon));
+        GFileInfo * fileInfo = file ? g_file_query_info(file, G_FILE_ATTRIBUTE_STANDARD_ICON, G_FILE_QUERY_INFO_NONE, NULL, NULL) : NULL;
+        GIcon * fileIcon = fileInfo ? g_file_info_get_icon(fileInfo) : NULL;
+        const gchar * const * iconNames = fileIcon ? g_themed_icon_get_names(G_THEMED_ICON(fileIcon)) : NULL;
 		if (iconNames)
 			iconName = wxString::FromUTF8(iconNames[0]);
-		g_object_unref(fileIcon);
-		g_object_unref(fileInfo);
-		g_object_unref(file);
+        if (fileInfo)
+            g_object_unref(fileInfo);
+        if (file)
+            g_object_unref(file);
 	}
 
 	wxSize iconSize = CThemeProvider::GetIconSize(iconSizeSmall);
-	if (!iconName.IsNull() && iconName.GetChar(0) == '/')
+    if (iconName.IsEmpty())
+        return wxBitmap();
+    if (iconName.GetChar(0) == '/')
 		return wxImage(iconName).Rescale(iconSize.GetWidth(), iconSize.GetHeight());
-	else
-		return wxArtProvider::GetBitmap(iconName, wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
+    return wxArtProvider::GetBitmap(iconName, wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
 }
-//#elif defined(__WXMAC__)
-//wxBitmap GetFileIcon(const wxString & fileName, const wxString & ext)
-//{
-//	 NSImage img = [[NSWorkspace sharedWorkspace] iconForFileType:ext]
-//}
+
 #else
+
+static wxBitmap GetNativeFileIcon(const wxString & /*fileName*/, const wxString & /*ext*/)
+{
+    return wxBitmap();
+}
+
+#endif
+
 // This function converts to the right size with the given background colour
-wxBitmap PrepareIcon(wxIcon icon, wxSize size)
+static wxBitmap PrepareIcon(wxIcon icon, wxSize size)
 {
 	if (icon.GetWidth() == size.GetWidth() && icon.GetHeight() == size.GetHeight())
 		return icon;
@@ -266,7 +274,7 @@ wxBitmap PrepareIcon(wxIcon icon, wxSize size)
 	return bmp.ConvertToImage().Rescale(size.GetWidth(), size.GetHeight());
 }
 
-wxBitmap GetFileIcon(const wxString & /*fileName*/, const wxString & ext)
+static wxBitmap GetFileIcon(const wxString & /*fileName*/, const wxString & ext)
 {
 	wxFileType *pType = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
 	if (!pType)
@@ -286,7 +294,6 @@ wxBitmap GetFileIcon(const wxString & /*fileName*/, const wxString & ext)
 
 	return bmp;
 }
-#endif
 
 int CSystemImageList::GetIconIndex(iconType type, const wxString& fileName /*=_T("")*/, bool physical /*=true*/, bool symlink /*=false*/)
 {
@@ -342,7 +349,9 @@ int CSystemImageList::GetIconIndex(iconType type, const wxString& fileName /*=_T
 			return cacheIter->second;
 	}
 
-	wxBitmap bmp = GetFileIcon(fileName, ext);
+    wxBitmap bmp = GetNativeFileIcon(fileName, ext);
+    if (!bmp.IsOk())
+        bmp = GetFileIcon(fileName, ext);
 	if (bmp.IsOk()) {
 		if (symlink)
 			OverlaySymlink(bmp);
