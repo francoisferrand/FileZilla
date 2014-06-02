@@ -487,12 +487,8 @@ int CLocalListView::OnGetItemImage(long item) const
 				path = m_dir + data->name;
 		}
 
-#if wxCHECK_VERSION(3,0,0)
-		bool isSymLink = wxFileName::Exists(path, wxFILE_EXISTS_SYMLINK);
-#else
-		wxStructStat statbuf;
-		bool isSymLink = wxLstat(path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode);
-#endif
+        bool isSymLink = false;
+        CLocalFileSystem::GetFileInfo(path, isSymLink, NULL, NULL, NULL);
 		icon = pThis->GetIconIndex(data->dir ? dir : file, path, true, isSymLink);
 	}
 	return icon;
