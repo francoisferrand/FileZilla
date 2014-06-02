@@ -32,12 +32,13 @@ protected:
 	std::vector<wxPanel*> panels_;
 
 	wxTimer timer_;
-	
+
 	DECLARE_EVENT_TABLE()
 	void OnInstall(wxCommandEvent& ev);
 	void OnTimer(wxTimerEvent& ev);
 	void ShowDetails(wxHyperlinkEvent& ev);
 	void Retry(wxHyperlinkEvent& ev);
+	void OnDebugLog(wxCommandEvent&);
 };
 
 #endif

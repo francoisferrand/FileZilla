@@ -1,5 +1,4 @@
 SUBDIRS = resources .
-INCLUDES = -I$(srcdir)/../include
 #########################################################################
 # APPLICATION SECTION
 #########################################################################
@@ -241,7 +240,8 @@ endif
 
 filezilla_DEPENDENCIES = ../engine/libengine.a
 
-filezilla_CPPFLAGS = $(WX_CPPFLAGS)
+filezilla_CPPFLAGS = -I$(srcdir)/../include
+filezilla_CPPFLAGS += $(WX_CPPFLAGS)
 filezilla_CXXFLAGS = $(WX_CXXFLAGS_ONLY)
 filezilla_CFLAGS = $(WX_CFLAGS_ONLY)
 
@@ -262,7 +262,7 @@ filezilla_CPPFLAGS += $(LIBSQLITE3_CFLAGS)
 filezilla_LDFLAGS += $(LIBSQLITE3_LIBS)
 
 if MINGW
-filezilla_LDFLAGS += -lole32 -luuid -lnetapi32 -lmpr -lpowrprof
+filezilla_LDFLAGS += -lnormaliz -lole32 -luuid -lnetapi32 -lmpr -lpowrprof
 endif
 
 # GTK+ libs, empty if not using wxGTK

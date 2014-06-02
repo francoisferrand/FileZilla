@@ -8,6 +8,7 @@
 #include "file_utils.h"
 #include <local_filesys.h>
 #include <wx/tokenzr.h>
+#include <string>
 
 // This is ugly but does the job
 #define SHA512_STANDALONE
@@ -126,7 +127,7 @@ void CUpdater::Init()
 	}
 
 	raw_version_information_ = COptions::Get()->GetOption( OPTION_UPDATECHECK_NEWVERSION );
-	
+
 	UpdaterState s = ProcessFinishedData(FZ_AUTOUPDATECHECK);
 
 	SetState(s);
@@ -235,6 +236,12 @@ bool CUpdater::Run()
 	local_file_.clear();
 	log_ = wxString::Format(_("Started update check on %s\n"), t.Format().c_str());
 
+	wxString build = CBuildInfo::GetBuildType();
+	if( build.empty() ) {
+		build = _("custom");
+	}
+	log_ += wxString::Format(_("Own build type: %s\n"), build.c_str());
+
 	SetState(checking);
 
 	update_options_->m_use_internal_rootcert = true;
@@ -296,7 +303,7 @@ void CUpdater::OnEngineEvent(wxEvent&)
 	if (!engine_)
 		return;
 
-	CNotification *notification; 
+	CNotification *notification;
 	while( (notification = engine_->GetNextNotification()) ) {
 		ProcessNotification(notification);
 		delete notification;
@@ -443,7 +450,7 @@ wxString CUpdater::GetLocalFile( build const& b, bool allow_existing )
 {
 	wxString const fn = GetFilename( b.url_ );
 	wxString const dl = GetDownloadDir().GetPath();
-	
+
 	int i = 1;
 	wxString f = dl + fn;
 
@@ -476,19 +483,25 @@ void CUpdater::ProcessData(CNotification* notification)
 	if( state_ != checking ) {
 		return;
 	}
-	
+
 	CDataNotification* pData = reinterpret_cast<CDataNotification*>(notification);
 
 	int len;
 	char* data = pData->Detach(len);
 
+	if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+		log_ += wxString::Format(_T("ProcessData %d\n"), len);
+	}
+
 	if( raw_version_information_.size() + len > 131072 ) {
+		log_ += _("Received version information is too large");
 		engine_->Command(CCancelCommand());
 		SetState(failed);
 	}
 	else {
-		for (int i = 0; i < len; i++) {
+		for (int i = 0; i < len; ++i) {
 			if (data[i] < 10 || (unsigned char)data[i] > 127) {
+				log_ += _("Received invalid character in version information");
 				SetState(failed);
 				engine_->Command(CCancelCommand());
 				break;
@@ -509,16 +522,16 @@ void CUpdater::ParseData()
 
 	wxString raw_version_information = raw_version_information_;
 
+	log_ += wxString::Format(_("Parsing %d bytes of version information.\n"), static_cast<int>(raw_version_information.size()));
+
 	while( !raw_version_information.empty() ) {
 		wxString line;
 		int pos = raw_version_information.Find('\n');
-		if (pos != -1)
-		{
+		if (pos != -1) {
 			line = raw_version_information.Left(pos);
 			raw_version_information = raw_version_information.Mid(pos + 1);
 		}
-		else
-		{
+		else {
 			line = raw_version_information;
 			raw_version_information = _T("");
 		}
@@ -529,10 +542,17 @@ void CUpdater::ParseData()
 			version_information_.changelog = raw_version_information;
 			version_information_.changelog.Trim(true);
 			version_information_.changelog.Trim(false);
+
+			if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+				log_ += wxString::Format(_T("Changelog: %s\n"), version_information_.changelog.c_str());
+			}
 			break;
 		}
 
 		if( tokens.CountTokens() != 2 && tokens.CountTokens() != 6 ) {
+			if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+				log_ += wxString::Format(_T("Skipping line with %d tokens\n"), static_cast<int>(tokens.CountTokens()));
+			}
 			continue;
 		}
 
@@ -541,19 +561,27 @@ void CUpdater::ParseData()
 
 		if (type == _T("nightly")) {
 			wxDateTime nightlyDate;
-			if (!nightlyDate.ParseDate(versionOrDate))
+			if( !nightlyDate.ParseFormat(versionOrDate, _T("%Y-%m-%d")) ) {
+				if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+					log_ += _T("Could not parse nightly date\n");
+				}
 				continue;
+			}
 
 			wxDateTime buildDate = CBuildInfo::GetBuildDate();
-			if (!buildDate.IsValid() || !nightlyDate.IsValid() || nightlyDate <= buildDate)
+			if (!buildDate.IsValid() || !nightlyDate.IsValid() || nightlyDate <= buildDate) {
+				if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+					log_ += _T("Nightly isn't newer\n");
+				}
 				continue;
+			}
 		}
 		else {
 			wxLongLong v = CBuildInfo::ConvertToVersionNumber(versionOrDate);
 			if (v <= ownVersionNumber)
 				continue;
 		}
-		
+
 		build* b = 0;
 		if( type == _T("nightly") && UpdatableBuild() ) {
 			b = &version_information_.nightly_;
@@ -569,12 +597,15 @@ void CUpdater::ParseData()
 			b->version_ = versionOrDate;
 
 			if( UpdatableBuild() && tokens.CountTokens() == 4 ) {
-				wxString url = tokens.GetNextToken();
-				wxString sizestr = tokens.GetNextToken();
-				wxString hash_algo = tokens.GetNextToken();
-				wxString hash = tokens.GetNextToken();
+				wxString const url = tokens.GetNextToken();
+				wxString const sizestr = tokens.GetNextToken();
+				wxString const hash_algo = tokens.GetNextToken();
+				wxString const hash = tokens.GetNextToken();
 
 				if( GetFilename(url).empty() ) {
+					if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+						log_ += wxString::Format(_T("Could not extract filename from URL: %s\n"), url.c_str());
+					}
 					continue;
 				}
 
@@ -584,18 +615,23 @@ void CUpdater::ParseData()
 
 				unsigned long long l = 0;
 				if( !sizestr.ToULongLong(&l) ) {
+					if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
+						log_ += wxString::Format(_T("Could not parse size: %s"), sizestr.c_str());
+					}
 					continue;
 				}
-				
+
 				b->url_ = url;
 				b->size_ = l;
 				b->hash_ = hash;
+
+				log_ += wxString::Format(_("Found new %s %s\n"), type.c_str(), b->version_.c_str());
 			}
 		}
 	}
 
 	version_information_.update_available();
-	
+
 	COptions::Get()->SetOption( OPTION_UPDATECHECK_NEWVERSION, raw_version_information_ );
 }
 
@@ -684,9 +720,9 @@ wxString CUpdater::GetFilename( wxString const& url) const
 	if( pos != -1 ) {
 		ret = url.Mid(pos + 1);
 	}
-	pos = ret.find_first_of(_T("?#"));
-	if( pos != -1 ) {
-		ret = ret.Left(pos);
+	std::size_t p = ret.find_first_of(_T("?#"));
+	if( p != std::string::npos ) {
+		ret = ret.substr(0, p);
 	}
 #ifdef __WXMSW__
 	ret.Replace(_T(":"), _T("_"));

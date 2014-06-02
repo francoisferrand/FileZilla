@@ -331,6 +331,8 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 #ifdef __WXDEBUG__
 		wxString unwrapped = UnwrapText(text);
 		wxASSERT(original == unwrapped || containsURL);
+#else
+	(void)containsURL;
 #endif
 
 	return true;
@@ -784,7 +786,7 @@ wxString CWrapEngine::UnwrapText(const wxString& text)
 			if (unwrapped[pos - 1] == ' ')
 				unwrapped = unwrapped.Left(pos + 2) + _T(" ") + unwrapped.Mid(pos + 3);
 			else
-				unwrapped = unwrapped.Left(pos + 2) + unwrapped.Mid(pos + 3);				
+				unwrapped = unwrapped.Left(pos + 2) + unwrapped.Mid(pos + 3);
 		}
 
 		unwrapped.Replace(_T("\n"), _T(" "));

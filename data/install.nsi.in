@@ -317,8 +317,8 @@ FunctionEnd
 
 Function .onInit
 
-  ${Unless} ${AtLeastWin2000}
-    MessageBox MB_YESNO|MB_ICONSTOP "Unsupported operating system.$\nFileZilla ${VERSION} requires at least Windows XP and may not work correctly on your system.$\nDo you really want to continue with the installation?" /SD IDNO IDYES installonoldwindows
+  ${Unless} ${AtLeastWinVista}
+    MessageBox MB_YESNO|MB_ICONSTOP "Unsupported operating system.$\nFileZilla ${VERSION} requires at least Windows Vista and may not work correctly on your system.$\nDo you really want to continue with the installation?" /SD IDNO IDYES installonoldwindows
     Abort
 installonoldwindows:
   ${EndUnless}
@@ -385,7 +385,7 @@ UAC_Success:
     Call FZVersionCompare
 
     DetailPrint "Found previous version: $PREVIOUS_VERSION"
-    DetailPrint "Installing $PREVIOUS_VERSION_STATE version $VERSION"
+    DetailPrint "Installing $PREVIOUS_VERSION_STATE version ${VERSION}"
 
   ${EndIf}
 
@@ -599,9 +599,18 @@ Function RunUninstaller
   IfFileExists "$INSTDIR\uninstall.exe" 0 no_remove_uninstaller
 
     Delete "$R1"
+
+  ; Remove directory only if uninstalling for good
+  ${If} $PREVIOUS_VERSION_STATE == "same"
+  ${AndIf} $REINSTALL_UNINSTALL == "1"
+  ${AndIf} $PERFORM_UPDATE != "1"
     RMDir $INSTDIR
+  ${EndIf}
 
  no_remove_uninstaller:
+
+  BringToFront
+  Sleep 500
 
 FunctionEnd
 
@@ -811,8 +820,6 @@ Function PageInstfilesShow
   ${If} $REINSTALL_UNINSTALL != ""
 
     Call RunUninstaller
-    BringToFront
-    Sleep 500
 
   ${EndIf}
 
@@ -849,17 +856,24 @@ Section "FileZilla Client" SecMain
   File "..\src\interface\${LT_EXEDIR}FileZilla.exe"
   File "..\src\putty\${LT_EXEDIR}fzsftp.exe"
   File "..\src\putty\${LT_EXEDIR}fzputtygen.exe"
-  File "${srcdir}\mingwm10.dll"
+
+  # MinGW runtime libraries
+  File "${srcdir}\libgcc_s_sjlj-1.dll"
+  File "${srcdir}\libstdc++-6.dll"
+  File "${srcdir}\libwinpthread-1.dll"
+
   File "${top_srcdir}\GPL.html"
   File "${top_srcdir}\NEWS"
   File "${top_srcdir}\AUTHORS"
 
   SetOutPath "$INSTDIR\resources"
-  File "${top_srcdir}/src\interface\resources\*.xrc"
   File "${top_srcdir}/src\interface\resources\*.png"
   File "${top_srcdir}/src\interface\resources\defaultfilters.xml"
   File "${top_srcdir}/src\interface\resources\finished.wav"
   File "${top_srcdir}/src\interface\resources\theme.xml"
+
+  SetOutPath "$INSTDIR\resources\xrc"
+  File "${top_srcdir}/src\interface\resources\xrc\*.xrc"
 
   SetOutPath "$INSTDIR\resources\16x16"
   File "${top_srcdir}/src\interface\resources\16x16\*.png"
@@ -963,7 +977,7 @@ ${MementoSectionEnd}
 
 ${MementoSection} "Shell Extension" SecShellExt
 
-SetOutPath "$INSTDIR"
+  SetOutPath "$INSTDIR"
   !define LIBRARY_SHELL_EXTENSION
   !define LIBRARY_COM
   !define LIBRARY_IGNORE_VERSION
@@ -981,6 +995,7 @@ ${MementoSectionEnd}
 
 ${MementoUnselectedSection} "Desktop Icon" SecDesktop
 
+  SetOutPath "$INSTDIR"
   CreateShortCut "$DESKTOP\FileZilla Client.lnk" "$INSTDIR\filezilla.exe" "" "$INSTDIR\filezilla.exe" 0
 
 ${MementoSectionEnd}
@@ -1005,14 +1020,14 @@ FunctionEnd
 
 Function PageFinishPre
   ${If} $PERFORM_UPDATE == 1
-    UAC_unicode::Exec '' '"$INSTDIR/filezilla.exe"' '' ''
+    UAC_unicode::Exec '' '"$INSTDIR\filezilla.exe"' '' ''
     Quit
   ${EndIf}
 FunctionEnd
 
 Function CustomFinishRun
 
-  UAC_unicode::Exec '' '"$INSTDIR/filezilla.exe"' '' ''
+  UAC_unicode::Exec '' '"$INSTDIR\filezilla.exe"' '' ''
 
 FunctionEnd
 
@@ -1244,11 +1259,16 @@ Section "Uninstall"
   Delete "$INSTDIR\filezilla.exe"
   Delete "$INSTDIR\fzsftp.exe"
   Delete "$INSTDIR\fzputtygen.exe"
-  Delete "$INSTDIR\mingwm10.dll"
+
+  # MinGW runtime libraries
+  Delete "$INSTDIR\libgcc_s_sjlj-1.dll"
+  Delete "$INSTDIR\libstdc++-6.dll"
+  Delete "$INSTDIR\libwinpthread-1.dll"
+
   Delete "$INSTDIR\GPL.html"
   Delete "$INSTDIR\NEWS"
   Delete "$INSTDIR\AUTHORS"
-  Delete "$INSTDIR\resources\*.xrc"
+  Delete "$INSTDIR\resources\xrc\*.xrc"
   Delete "$INSTDIR\resources\*.png"
   Delete "$INSTDIR\resources\defaultfilters.xml"
   Delete "$INSTDIR\resources\finished.wav"
@@ -1283,9 +1303,14 @@ Section "Uninstall"
   RMDir "$INSTDIR\resources\48x48"
   RMDir "$INSTDIR\resources\32x32"
   RMDir "$INSTDIR\resources\16x16"
+  RMDir "$INSTDIR\resources\xrc"
   RMDir "$INSTDIR\resources"
   RMDir "$INSTDIR\docs"
-  RMDir /REBOOTOK "$INSTDIR"
+
+  ${un.GetOptions} $R0 "/frominstall" $R1
+  ${If} ${Errors}
+    RMDir /REBOOTOK "$INSTDIR"
+  ${EndIf}
 
   ${If} $un.REMOVE_ALL_USERS == 1
     SetShellVarContext all

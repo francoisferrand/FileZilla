@@ -5,6 +5,7 @@
 #include "queue.h"
 
 #include <libfilezilla.h>
+#include <option_change_event_handler.h>
 
 #include <set>
 #include <wx/progdlg.h>
@@ -22,6 +23,7 @@ public:
 	const enum t_type m_type;
 
 	CFolderProcessingEntry(enum t_type type) : m_type(type) {}
+	virtual ~CFolderProcessingEntry() {}
 };
 
 class t_newEntry : public CFolderProcessingEntry
@@ -112,7 +114,7 @@ class CQueue;
 class CDesktopNotification;
 #endif
 
-class CQueueView : public CQueueViewBase
+class CQueueView : public CQueueViewBase, public COptionChangeEventHandler
 {
 	friend class CFolderProcessingThread;
 	friend class CQueueViewDropTarget;
@@ -136,10 +138,6 @@ public:
 	int IsActive() const { return m_activeMode; }
 	bool SetActive(bool active = true);
 	bool Quit();
-
-	// If the settings are changed, this function will recalculate some
-	// data like the list of ascii file types
-	void SettingsChanged();
 
 	// This sets the default file exists action for all files currently in queue.
 	// This includes queued folders which are yet to be processed
@@ -178,6 +176,8 @@ protected:
 #ifdef __WXMSW__
 	WXLRESULT MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam);
 #endif
+
+	virtual void OnOptionChanged(int option);
 
 	void AdvanceQueue(bool refresh = true);
 	bool TryStartNextTransfer();

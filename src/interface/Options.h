@@ -125,6 +125,8 @@ public:
 
 	void SaveIfNeeded();
 
+	static wxString GetUnadjustedSettingsDir();
+
 protected:
 	COptions();
 	virtual ~COptions();

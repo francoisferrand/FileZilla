@@ -804,8 +804,11 @@
                 <flag>wxALIGN_CENTRE_VERTICAL</flag>
               </object>
               <object class="sizeritem">
-                <object class="wxTextCtrl" name="ID_NUMTRANSFERS">
-                  <size>40,-1</size>
+                <object class="wxSpinCtrl" name="ID_NUMTRANSFERS">
+                  <min>1</min>
+                  <max>10</max>
+                  <size>45,-1</size>
+                  <style>wxSP_ARROW_KEYS</style>
                 </object>
                 <flag>wxALIGN_CENTRE_VERTICAL</flag>
               </object>
@@ -822,8 +825,11 @@
                 <flag>wxALIGN_CENTRE_VERTICAL</flag>
               </object>
               <object class="sizeritem">
-                <object class="wxTextCtrl" name="ID_NUMDOWNLOADS">
-                  <size>40,-1</size>
+                <object class="wxSpinCtrl" name="ID_NUMDOWNLOADS">
+                  <min>0</min>
+                  <max>10</max>
+                  <size>45,-1</size>
+                  <style>wxSP_ARROW_KEYS</style>
                 </object>
                 <flag>wxALIGN_CENTRE_VERTICAL</flag>
               </object>
@@ -840,8 +846,11 @@
                 <flag>wxALIGN_CENTRE_VERTICAL</flag>
               </object>
               <object class="sizeritem">
-                <object class="wxTextCtrl" name="ID_NUMUPLOADS">
-                  <size>40,-1</size>
+                <object class="wxSpinCtrl" name="ID_NUMUPLOADS">
+                  <min>0</min>
+                  <max>10</max>
+                  <size>45,-1</size>
+                  <style>wxSP_ARROW_KEYS</style>
                 </object>
                 <flag>wxALIGN_CENTRE_VERTICAL</flag>
               </object>
@@ -1273,7 +1282,7 @@
               <orient>wxHORIZONTAL</orient>
               <object class="sizeritem">
                 <object class="wxStaticText">
-                  <label>&amp;Position of the message log:</label>
+                  <label>Positio&amp;n of the message log:</label>
                 </object>
                 <flag>wxRIGHT|wxALIGN_CENTRE_VERTICAL</flag>
                 <border>5</border>
@@ -1327,6 +1336,22 @@
               </object>
               <cols>1</cols>
               <vgap>5</vgap>
+              <object class="spacer"/>
+              <object class="sizeritem">
+                <object class="wxStaticText">
+                  <label>When st&amp;arting a new connection while already connected:</label>
+                </object>
+              </object>
+              <object class="sizeritem">
+                <object class="wxChoice" name="ID_NEWCONN_ACTION">
+                  <content>
+                    <item>Ask for action</item>
+                    <item>Connect in new tab</item>
+                    <item>Connect in current tab</item>
+                  </content>
+                  <selection>0</selection>
+                </object>
+              </object>
             </object>
             <flag>wxBOTTOM|wxLEFT|wxRIGHT</flag>
             <border>4</border>
@@ -2001,7 +2026,7 @@
                   </content>
                   <selection>1</selection>
                 </object>
-              </object>              
+              </object>
               <object class="spacer">
                 <size>0,10</size>
               </object>

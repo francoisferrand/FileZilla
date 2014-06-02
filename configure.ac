@@ -1,4 +1,4 @@
-AC_INIT(FileZilla, 3.8.0, tim.kosse@filezilla-project.org)
+AC_INIT(FileZilla, 3.8.1, tim.kosse@filezilla-project.org)
 AC_CONFIG_HEADERS([src/include/config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
@@ -48,7 +48,7 @@ if ! test "$localesonly" = "yes"; then
     CXXFLAGS="$CXXFLAGS -Wall -g -fexceptions"
   fi
 
-  CHECK_CXX0X
+  CHECK_CXX11
 
   # Add build information to config.h
   # ---------------------------------
@@ -281,23 +281,27 @@ if test "$buildmain" = "yes"; then
   # Libidn checks
   # -------------
 
-  AC_CHECK_HEADER(idna.h,,
-  [
-    AC_MSG_ERROR([idna.h not found which is part of GNU libidn.])
-  ])
+  IDN_LIB=
+  if ! echo $WX_CPPFLAGS | grep __WXMSW__; then
 
-  AC_ARG_WITH(idn-lib,
-      AC_HELP_STRING([--with-idn-lib=FILE], [Use the given path to the idn library.]),
-  [
-    if test "$withval" != "yes" -a "$withval" != ""; then
-        IDN_LIB=$withval
+    AC_CHECK_HEADER(idna.h,,
+    [
+      AC_MSG_ERROR([idna.h not found which is part of GNU libidn.])
+    ])
+
+    AC_ARG_WITH(idn-lib,
+        AC_HELP_STRING([--with-idn-lib=FILE], [Use the given path to the idn library.]),
+    [
+      if test "$withval" != "yes" -a "$withval" != ""; then
+          IDN_LIB=$withval
+      fi
+    ])
+
+    if test "x$IDN_LIB" = "x"; then
+      AC_CHECK_LIB(idn, stringprep_check_version, IDN_LIB="-lidn",
+                   AC_MSG_ERROR([GNU libidn not found. Try using --with-idn-lib=FILE to specify the library path.])
+                   )
     fi
-  ])
-
-  if test "x$IDN_LIB" = "x"; then
-    AC_CHECK_LIB(idn, stringprep_check_version, IDN_LIB="-lidn",
-                 AC_MSG_ERROR([GNU libidn not found. Try using --with-idn-lib=FILE to specify the library path.])
-                 )
   fi
 
   AC_SUBST(IDN_LIB)
@@ -385,13 +389,9 @@ if test "$buildmain" = "yes"; then
   # GnuTLS
   # ------
 
-  PKG_CHECK_MODULES(LIBGNUTLS, gnutls >= 2.8.3,, [
-
-    AM_PATH_LIBGNUTLS(2.8.3,, AC_MSG_ERROR([[
-***
-*** libgnutls 2.8.3 or greater was not found. You may want to get it from
-*** ftp://ftp.gnutls.org/pub/gnutls/]]))
-    ])
+  PKG_CHECK_MODULES(LIBGNUTLS, gnutls >= 3.1.12,, [
+    AC_MSG_ERROR([libgnutls 3.1.12 greater was not found. You can get it from http://gnutls.org/])
+  ])
 
   AC_SUBST(LIBGNUTLS_LIBS)
   AC_SUBST(LIBGNUTLS_CFLAGS)

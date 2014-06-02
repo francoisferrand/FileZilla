@@ -296,7 +296,7 @@ CMainFrame::CMainFrame()
 	}
 
 	m_closeEventTimer.SetOwner(this);
-	
+
 	if (CFilterManager::HasActiveFilters(true))
 	{
 		if (COptions::Get()->GetOptionVal(OPTION_FILTERTOGGLESTATE))
@@ -684,7 +684,7 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 			dlg.AddText(_("A proper server always shows all files, but some broken servers hide files from the user. Use this option to force the server to show all files."));
 			dlg.AddText(_("Keep in mind that not all servers support this feature and may return incorrect listings if this option is enabled. Although FileZilla performs some tests to check if the server supports this feature, the test may fail."));
 			dlg.AddText(_("Disable this option again if you will not be able to see the correct directory contents anymore."));
-			dlg.Run();
+			(void)dlg.Run();
 		}
 
 		COptions::Get()->SetOption(OPTION_VIEW_HIDDEN_FILES, showHidden ? 1 : 0);
@@ -855,7 +855,7 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 		if (event.GetId() == XRCID("ID_BOOKMARK_ADD"))
 		{
 			CNewBookmarkDialog dlg(this, controls->site_bookmarks->path, pServer);
-			res = dlg.ShowModal(pState->GetLocalDir().GetPath(), pState->GetRemotePath());
+			res = dlg.ShowModal(pState ? pState->GetLocalDir().GetPath() : wxString(), pState ? pState->GetRemotePath() : CServerPath());
 		}
 		else
 		{
@@ -1311,9 +1311,10 @@ void CMainFrame::OnClose(wxCloseEvent &event)
 	delete m_pStateEventHandler;
 	m_pStateEventHandler = 0;
 
-	if (!m_pQueueView->Quit())
-	{
-		event.Veto();
+	if (!m_pQueueView->Quit()) {
+		if( event.CanVeto() ) {
+			event.Veto();
+		}
 		return;
 	}
 
@@ -1336,9 +1337,10 @@ void CMainFrame::OnClose(wxCloseEvent &event)
 			res = false;
 	}
 
-	if (!res)
-	{
-		event.Veto();
+	if (!res) {
+		if( event.CanVeto() ) {
+			event.Veto();
+		}
 		return;
 	}
 
@@ -1842,7 +1844,7 @@ void CMainFrame::UpdaterStateChanged( UpdaterState s, build const& v )
 		wxMenu* m = 0;
 		wxMenuItem* pItem = m_pMenuBar->FindItem(GetAvailableUpdateMenuId(), &m);
 		if( pItem && m ) {
-			for( int i = 0; i != m_pMenuBar->GetMenuCount(); ++i ) {
+			for( size_t i = 0; i != m_pMenuBar->GetMenuCount(); ++i ) {
 				if( m_pMenuBar->GetMenu(i) == m ) {
 					m_pMenuBar->Remove(i);
 					delete m;
@@ -2128,7 +2130,7 @@ bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site* const pData, bool newT
 	SetBookmarksFromPath(pData->m_path);
 	if (m_pMenuBar)
 		m_pMenuBar->UpdateBookmarkMenu();
-		
+
 	return true;
 }
 
@@ -2138,9 +2140,7 @@ void CMainFrame::CheckChangedSettings()
 
 	m_pAsyncRequestQueue->RecheckDefaults();
 
-	m_pQueueView->SettingsChanged();
 	CAutoAsciiFiles::SettingsChanged();
-
 
 #if FZ_MANUALUPDATECHECK
 	m_pUpdater->Init();
@@ -2549,7 +2549,7 @@ void CMainFrame::ProcessCommandLine()
 	wxString local;
 	if ((local = pCommandLine->GetOption(CCommandLine::local)) != _T(""))
 	{
-		
+
 		if (!wxDir::Exists(local))
 		{
 			wxString str = _("Path not found:");
@@ -2557,19 +2557,17 @@ void CMainFrame::ProcessCommandLine()
 			wxMessageBoxEx(str, _("Syntax error in command line"));
 			return;
 		}
-		
+
 		CState *pState = CContextManager::Get()->GetCurrentContext();
 		if (!pState)
 			return;
-			
+
 		pState->SetLocalDir(local);
-	}	
-	
+	}
+
 	wxString site;
-	if (pCommandLine->HasSwitch(CCommandLine::sitemanager))
-	{
-		if (!COptions::Get()->GetOptionVal(OPTION_INTERFACE_SITEMANAGER_ON_STARTUP) != 0)
-		{
+	if (pCommandLine->HasSwitch(CCommandLine::sitemanager)) {
+		if (COptions::Get()->GetOptionVal(OPTION_INTERFACE_SITEMANAGER_ON_STARTUP) == 0) {
 			Show();
 			OpenSiteManager();
 		}
@@ -2843,12 +2841,14 @@ bool CMainFrame::ConnectToServer(const CServer &server, const CServerPath &path 
 	if (!pState)
 		return false;
 
-	if (pState->IsRemoteConnected() || !pState->IsRemoteIdle())
-	{
-		wxDialogEx dlg;
-		if (dlg.Load(this, _T("ID_ALREADYCONNECTED")))
-		{
-			if (COptions::Get()->GetOptionVal(OPTION_ALREADYCONNECTED_CHOICE) != 0)
+	if (pState->IsRemoteConnected() || !pState->IsRemoteIdle()) {
+		int action = COptions::Get()->GetOptionVal(OPTION_ALREADYCONNECTED_CHOICE);
+		if( action < 2 ) {
+			wxDialogEx dlg;
+			if (!dlg.Load(this, _T("ID_ALREADYCONNECTED")))
+				return false;
+
+			if (action != 0)
 				XRCCTRL(dlg, "ID_OLDTAB", wxRadioButton)->SetValue(true);
 			else
 				XRCCTRL(dlg, "ID_NEWTAB", wxRadioButton)->SetValue(true);
@@ -2856,14 +2856,22 @@ bool CMainFrame::ConnectToServer(const CServer &server, const CServerPath &path 
 			if (dlg.ShowModal() != wxID_OK)
 				return false;
 
-			if (XRCCTRL(dlg, "ID_NEWTAB", wxRadioButton)->GetValue())
-			{
-				m_pContextControl->CreateTab();
-				pState = CContextManager::Get()->GetCurrentContext();
-				COptions::Get()->SetOption(OPTION_ALREADYCONNECTED_CHOICE, 0);
+			if (XRCCTRL(dlg, "ID_NEWTAB", wxRadioButton)->GetValue()) {
+				action = 0;
 			}
-			else
-				COptions::Get()->SetOption(OPTION_ALREADYCONNECTED_CHOICE, 1);
+			else {
+				action = 1;
+			}
+
+			if( XRCCTRL(dlg, "ID_REMEMBER", wxCheckBox)->IsChecked() ) {
+				action |= 2;
+			}
+			COptions::Get()->SetOption(OPTION_ALREADYCONNECTED_CHOICE, action);
+		}
+
+		if( !(action & 1) ) {
+			m_pContextControl->CreateTab();
+			pState = CContextManager::Get()->GetCurrentContext();
 		}
 	}
 
