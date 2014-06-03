@@ -20,6 +20,9 @@ class CNaturalSortTest : public CppUnit::TestFixture
 	CPPUNIT_TEST(testString);
 	CPPUNIT_TEST(testNumber);
 	CPPUNIT_TEST(testMixed);
+    CPPUNIT_TEST(testSeq);
+    CPPUNIT_TEST(testPair);
+    CPPUNIT_TEST(testFractional);
 	CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -31,8 +34,9 @@ public:
 	void testString();
 	void testNumber();
 	void testMixed();
-
-protected:
+    void testSeq();
+    void testPair();
+    void testFractional();
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(CNaturalSortTest);
@@ -81,10 +85,11 @@ void CNaturalSortTest::testNumber()
 	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1"), _T("02")) < 0);
 	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("02"), _T("3")) < 0);
 	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("3"), _T("02")) > 0);
-	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("25"), _T("021")) < 0);
-	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("021"), _T("25")) > 0);
-//	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("2100"), _T("02005")) > 0);
-//	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("02005"), _T("2100")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("25"), _T("021")) > 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("021"), _T("25")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("2100"), _T("02005")) > 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("02005"), _T("2100")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("010"), _T("02")) > 0);
 }
 
 void CNaturalSortTest::testMixed()
@@ -106,4 +111,32 @@ void CNaturalSortTest::testMixed()
 	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1abc"), _T("2")) < 0);
 	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1def"), _T("10abc")) < 0);
 	CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("10abc"), _T("1def")) > 0);
+}
+
+void CNaturalSortTest::testSeq()
+{
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a"), _T("a0")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a0"), _T("a1")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a1"), _T("a1a")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a1a"), _T("a1b")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a1b"), _T("a2")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a2"), _T("a10")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("a10"), _T("a20")) < 0);
+}
+
+void CNaturalSortTest::testPair()
+{
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("x2-g8"), _T("x2-y7")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("x2-y7"), _T("x2-y08")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("x2-y08"), _T("x8-y8")) < 0);
+}
+
+void CNaturalSortTest::testFractional()
+{
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1.001"), _T("1.002")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1.002"), _T("1.010")) < 0);
+    //CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1.010"), _T("1.02")) < 0);   //this fraction case would break 010 > 02
+    //CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1.02"), _T("1.1")) < 0);     //this fraction case would break 02 > 1
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1.1"), _T("1.3")) < 0);
+    CPPUNIT_ASSERT(CListViewSort::CmpNatural(_T("1.3"), _T("1.15")) < 0);
 }

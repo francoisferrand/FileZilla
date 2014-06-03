@@ -62,30 +62,34 @@ public:
 		wxString::const_iterator p2 = str2.begin();
 
         int res = 0;
+        int zeroCount = 0;
         bool isNumber = false;
         for (; p1 != str1.end() && p2 != str2.end(); ++p1, ++p2) {
-            int diff = wxToupper(*p1) - wxToupper(*p2);
+            int diff = (int)wxTolower(*p1) - (int)wxTolower(*p2);
             if (isNumber) {
                 if (res == 0)
                     res = diff;
                 int nbDigits = (wxIsdigit(*p1) ? 1 : 0) + (wxIsdigit(*p2) ? 1 : 0);
                 if (nbDigits == 0 && res == 0) {
+                    if (zeroCount)
+                        break;
                     isNumber = false;
                 } else if (nbDigits != 2)
                     break;
             } else if (wxIsdigit(*p1) && wxIsdigit(*p2)) {
-                int zeroCount = 0;
+                zeroCount = 0;
                 for(; *p1 == '0' && p1+1 != str1.end() && wxIsdigit(*(p1+1)); ++p1)
                     zeroCount++;
                 for(; *p2 == '0' && p2+1 != str2.end() && wxIsdigit(*(p2+1)); ++p2)
                     zeroCount--;
                 res = *p1 - *p2;
-                if (res == 0)
-                    res = zeroCount;
                 isNumber = true;
             } else if (diff)
                 return diff;
         }
+
+        if (res == 0 && isNumber)
+            res = zeroCount;
 
         if (p1 == str1.end() && p2 == str2.end())
             return res;
