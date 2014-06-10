@@ -126,7 +126,7 @@
               <object class="sizeritem">
                 <object class="wxBoxSizer">
                   <object class="sizeritem">
-                    <object class="wxStaticBoxSizer">
+                    <object class="wxStaticBoxSizer" name="ID_SUBJECT_BOX">
                       <label>Subject of certificate</label>
                       <orient>wxVERTICAL</orient>
                       <object class="sizeritem">
@@ -149,7 +149,7 @@
                     <border>5</border>
                   </object>
                   <object class="sizeritem">
-                    <object class="wxStaticBoxSizer">
+                    <object class="wxStaticBoxSizer" name="ID_ISSUER_BOX">
                       <label>Certificate issuer</label>
                       <orient>wxVERTICAL</orient>
                       <object class="sizeritem">
@@ -2732,7 +2732,6 @@
               <label>Export &amp;Queue</label>
             </object>
           </object>
-          <rows>2</rows>
           <vgap>5</vgap>
           <object class="sizeritem">
             <object class="wxGridSizer">
@@ -4683,7 +4682,6 @@
                     </object>
                   </object>
                   <cols>1</cols>
-                  <rows>2</rows>
                   <vgap>5</vgap>
                   <object class="sizeritem">
                     <object class="wxStaticText">

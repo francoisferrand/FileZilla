@@ -7,6 +7,8 @@
 #include "themeprovider.h"
 #include "verifycertdialog.h"
 
+#include <wx/dcclient.h>
+
 static const int statbarWidths[3] = {
 	-3, 0, 35
 };
@@ -152,16 +154,9 @@ void wxStatusBarEx::OnSize(wxSizeEvent&)
 #ifdef __WXGTK__
 void wxStatusBarEx::SetStatusText(const wxString& text, int number /*=0*/)
 {
-	// Basically identical to the wx one, but not calling Update
-	wxString oldText = m_statusStrings[number];
-	if (oldText != text)
-	{
-		m_statusStrings[number] = text;
-
-		wxRect rect;
-		GetFieldRect(number, rect);
-
-		Refresh(true, &rect);
+	wxString oldText = GetStatusText(number);
+	if (oldText != text) {
+		wxStatusBar::SetStatusText(text, number);
 	}
 }
 #endif

@@ -1,7 +1,9 @@
 #include <filezilla.h>
 #include "StatusView.h"
-#include <wx/wupdlock.h>
 #include "Options.h"
+
+#include <wx/dcclient.h>
+#include <wx/wupdlock.h>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -45,7 +47,7 @@ public:
 		::SendMessage(hwnd, EM_EXSETSEL, 0, (LPARAM)&range);
 		::SendMessage(hwnd, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cf);
 		m_updatesCount = -2; // suppress any update event
-		::SendMessage(hwnd, EM_REPLACESEL, 0, (LPARAM)text.c_str());
+		::SendMessage(hwnd, EM_REPLACESEL, 0, reinterpret_cast<LPARAM>(static_cast<wxChar const*>(text.c_str())));
 		::SendMessage(hwnd, EM_LINESCROLL, (WPARAM)0, (LPARAM)lineCount);
 	}
 #endif
@@ -71,7 +73,7 @@ public:
 	{
 		wxWindow* parent = GetParent();
 		event.SetEventObject(parent);
-		parent->ProcessEvent(event);
+		parent->ProcessWindowEvent(event);
 	}
 #else
 	void OnKeyDown(wxKeyEvent& event)
@@ -89,7 +91,7 @@ public:
 		navEvent.SetDirection(!event.ShiftDown());
 		navEvent.SetFromTab(true);
 		navEvent.ResumePropagation(1);
-		parent->ProcessEvent(navEvent);
+		parent->ProcessWindowEvent(navEvent);
 	}
 #endif
 };

@@ -183,7 +183,7 @@ void CStatusLineCtrl::OnTimer(wxTimerEvent&)
 	}
 
 	m_elapsedLabel->SetLabel(wxTimeSpan(0, 0, elapsed_seconds).Format(_("%H:%M:%S elapsed")));
-	m_remainingLabel->SetLabel(left != -1 ? wxTimeSpan(0, 0, left).Format(_("%H:%M:%S left")).c_str()
+	m_remainingLabel->SetLabel(left != -1 ? wxTimeSpan(0, 0, left).Format(_("%H:%M:%S left"))
 										  : _("--:--:-- left"));
 
 	if (status_valid_ && status_.totalSize > 0) {

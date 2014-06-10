@@ -424,7 +424,7 @@ int CHttpControlSocket::FileTransferSend()
 	}
 
 	if( !m_current_uri.HasScheme() || !m_current_uri.HasServer() || !m_current_uri.HasPath() ) {
-		LogMessage(__TFILE__, __LINE__, this, Debug_Warning, _T("Invalid URI: %s"), m_current_uri.BuildURI().c_str());
+		LogMessage(__TFILE__, __LINE__, this, Debug_Warning, _T("Invalid URI: %s"), m_current_uri.BuildURI());
 		ResetOperation(FZ_REPLY_INTERNALERROR);
 		return FZ_REPLY_ERROR;
 	}
@@ -457,7 +457,7 @@ int CHttpControlSocket::FileTransferSend()
 	}
 	wxString command = wxString::Format(_T("%s\r\nHost: %s\r\nUser-Agent: %s\r\nConnection: close\r\n"), action.c_str(), hostWithPort.c_str(), wxString(PACKAGE_STRING, wxConvLocal).c_str());
 	if( pData->resume ) {
-		command += wxString::Format(_T("Range: bytes=%") wxFileOffsetFmtSpec _T("d-\r\n"), pData->localFileSize);
+		command += wxString::Format(_T("Range: bytes=%") + wxString(wxFileOffsetFmtSpec) + _T("d-\r\n"), pData->localFileSize);
 	}
 	command += _T("\r\n");
 

@@ -53,9 +53,7 @@
 #include <wx/stdpaths.h>
 #endif
 
-#ifdef __WXGTK__
 #include "locale_initializer.h"
-#endif
 
 #ifdef ENABLE_BINRELOC
 	#define BR_PTHREADS 0
@@ -176,6 +174,65 @@ static void SetAppId()
 
 #endif //__WXMSW__
 
+void CFileZillaApp::InitLocale()
+{
+		wxString language = COptions::Get()->GetOption(OPTION_LANGUAGE);
+	const wxLanguageInfo* pInfo = wxLocale::FindLanguageInfo(language);
+	if (language != _T(""))
+	{
+#ifdef __WXGTK__
+		if (CInitializer::error)
+		{
+			wxString error;
+
+			wxLocale *loc = wxGetLocale();
+			const wxLanguageInfo* currentInfo = loc ? loc->GetLanguageInfo(loc->GetLanguage()) : 0;
+			if (!loc || !currentInfo)
+			{
+				if (!pInfo)
+					error.Printf(_("Failed to set language to %s, using default system language."),
+						language.c_str());
+				else
+					error.Printf(_("Failed to set language to %s (%s), using default system language."),
+						pInfo->Description.c_str(), language.c_str());
+			}
+			else
+			{
+				wxString currentName = currentInfo->CanonicalName;
+
+				if (!pInfo)
+					error.Printf(_("Failed to set language to %s, using default system language (%s, %s)."),
+						language.c_str(), loc->GetLocale(),
+						currentName.c_str());
+				else
+					error.Printf(_("Failed to set language to %s (%s), using default system language (%s, %s)."),
+						pInfo->Description.c_str(), language.c_str(), loc->GetLocale(),
+						currentName.c_str());
+			}
+
+			error += _T("\n");
+			error += _("Please make sure the requested locale is installed on your system.");
+			wxMessageBoxEx(error, _("Failed to change language"), wxICON_EXCLAMATION);
+
+			COptions::Get()->SetOption(OPTION_LANGUAGE, _T(""));
+		}
+#else
+		if (!pInfo || !SetLocale(pInfo->Language)) {
+			for( language = GetFallbackLocale(language); !language.empty(); language = GetFallbackLocale(language) ) {
+				const wxLanguageInfo* fallbackInfo = wxLocale::FindLanguageInfo(language);
+				if( fallbackInfo && SetLocale(fallbackInfo->Language )) {
+					return;
+				}
+			}
+			if (pInfo && !pInfo->Description.IsEmpty())
+				wxMessageBoxEx(wxString::Format(_("Failed to set language to %s (%s), using default system language"), pInfo->Description.c_str(), language.c_str()), _("Failed to change language"), wxICON_EXCLAMATION);
+			else
+				wxMessageBoxEx(wxString::Format(_("Failed to set language to %s, using default system language"), language.c_str()), _("Failed to change language"), wxICON_EXCLAMATION);
+		}
+#endif
+	}
+}
+
 bool CFileZillaApp::OnInit()
 {
 	AddStartupProfileRecord(_T("CFileZillaApp::OnInit()"));
@@ -226,56 +283,7 @@ bool CFileZillaApp::OnInit()
 
 	COptions::Init();
 
-	wxString language = COptions::Get()->GetOption(OPTION_LANGUAGE);
-	const wxLanguageInfo* pInfo = wxLocale::FindLanguageInfo(language);
-	if (language != _T(""))
-	{
-#ifdef __WXGTK__
-		if (CInitializer::error)
-		{
-			wxString error;
-
-			wxLocale *loc = wxGetLocale();
-			const wxLanguageInfo* currentInfo = loc ? loc->GetLanguageInfo(loc->GetLanguage()) : 0;
-			if (!loc || !currentInfo)
-			{
-				if (!pInfo)
-					error.Printf(_("Failed to set language to %s, using default system language."),
-						language.c_str());
-				else
-					error.Printf(_("Failed to set language to %s (%s), using default system language."),
-						pInfo->Description.c_str(), language.c_str());
-			}
-			else
-			{
-				wxString currentName = currentInfo->CanonicalName;
-
-				if (!pInfo)
-					error.Printf(_("Failed to set language to %s, using default system language (%s, %s)."),
-						language.c_str(), loc->GetLocale(),
-						currentName.c_str());
-				else
-					error.Printf(_("Failed to set language to %s (%s), using default system language (%s, %s)."),
-						pInfo->Description.c_str(), language.c_str(), loc->GetLocale(),
-						currentName.c_str());
-			}
-
-			error += _T("\n");
-			error += _("Please make sure the requested locale is installed on your system.");
-			wxMessageBoxEx(error, _("Failed to change language"), wxICON_EXCLAMATION);
-
-			COptions::Get()->SetOption(OPTION_LANGUAGE, _T(""));
-		}
-#else
-		if (!pInfo || !SetLocale(pInfo->Language))
-		{
-			if (pInfo && pInfo->Description)
-				wxMessageBoxEx(wxString::Format(_("Failed to set language to %s (%s), using default system language"), pInfo->Description.c_str(), language.c_str()), _("Failed to change language"), wxICON_EXCLAMATION);
-			else
-				wxMessageBoxEx(wxString::Format(_("Failed to set language to %s, using default system language"), language.c_str()), _("Failed to change language"), wxICON_EXCLAMATION);
-		}
-#endif
-	}
+	InitLocale();
 
 #ifndef _DEBUG
 	const wxString& buildType = CBuildInfo::GetBuildType();
@@ -788,7 +796,7 @@ void CFileZillaApp::CheckExistsFzsftp()
 	if (!found)
 	{
 		wxMessageBoxEx(wxString::Format(_("%s could not be found. Without this component of FileZilla, SFTP will not work.\n\nPossible solutions:\n- Make sure %s is in a directory listed in your PATH environment variable.\n- Set the full path to %s in the FZ_FZSFTP environment variable."), program.c_str(), program.c_str(), program.c_str()),
-			_("File not found"), wxICON_ERROR);
+			_("File not found"), wxICON_ERROR | wxOK);
 		executable.clear();
 	}
 #endif

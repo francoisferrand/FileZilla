@@ -134,7 +134,7 @@ static const t_Option options[OPTIONS_NUM] =
 	{ "File Pane Swap", number, _T("0"), normal },
 	{ "Last local directory", string, _T(""), normal },
 	{ "Filelist directory sort", number, _T("0"), normal },
-    { "Filelist name sort", number, DEFAULT_FILENAME_SORT, normal },
+	{ "Filelist name sort", number, DEFAULT_FILENAME_SORT, normal },
 	{ "Queue successful autoclear", number, _T("0"), normal },
 	{ "Queue column widths", string, _T(""), normal },
 	{ "Local filelist colwidths", string, _T(""), normal },

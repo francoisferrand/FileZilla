@@ -8,6 +8,7 @@
 #include "update_dialog.h"
 #include "themeprovider.h"
 
+#include <wx/animate.h>
 #include <wx/hyperlink.h>
 
 BEGIN_EVENT_TABLE(CUpdateDialog, wxDialogEx)
@@ -51,7 +52,7 @@ bool CUpdateDialog::IsRunning()
 int CUpdateDialog::ShowModal()
 {
 	wxString version(PACKAGE_VERSION, wxConvLocal);
-	if (version[0] < '0' || version[0] > '9')
+	if (version.empty() || version[0] < '0' || version[0] > '9')
 	{
 		wxMessageBoxEx(_("Executable contains no version info, cannot check for updates."), _("Check for updates failed"), wxICON_ERROR, parent_);
 		return wxID_CANCEL;
@@ -216,7 +217,7 @@ void CUpdateDialog::OnInstall(wxCommandEvent&)
 #else
 	bool program_exists = false;
 	wxString cmd = GetSystemOpenCommand(f, program_exists);
-	if( program_exists && cmd ) {
+	if( program_exists && !cmd.empty() ) {
 		if (wxExecute(cmd))
 			return;
 	}

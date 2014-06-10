@@ -14,9 +14,6 @@
 	#include "prefix.h"
 #endif
 
-// Custom main method to initialize proper locale
-#ifdef __WXGTK__
-
 struct t_fallbacks
 {
 	const char* locale;
@@ -50,6 +47,21 @@ struct t_fallbacks fallbacks[] = {
 
 	{ 0, 0 }
 };
+
+wxString GetFallbackLocale( wxString const& locale )
+{
+	int i = 0;
+	while (fallbacks[i].locale) {
+		if (fallbacks[i].locale == locale)
+			return fallbacks[i].fallback;
+		i++;
+	}
+
+	return wxString();
+}
+
+// Custom main method to initialize proper locale
+#ifdef __WXGTK__
 
 bool CInitializer::error = false;
 
@@ -232,7 +244,7 @@ std::string CInitializer::ReadSettingsFromDefaults(std::string file)
 			dir = dir.substr(pos + 1);
 		}
 
-		if (token[0] == '$')
+		if (!token.empty() && token[0] == '$')
 		{
 			if (token[1] == '$')
 				result += token.substr(1);
