@@ -477,6 +477,7 @@ int CLocalListView::OnGetItemImage(long item) const
 	if (icon == -2)
 	{
 		wxString path = _T("");
+		bool isSymLink = false;
 		if (data->name != _T(".."))
 		{
 #ifdef __WXMSW__
@@ -485,10 +486,9 @@ int CLocalListView::OnGetItemImage(long item) const
 			else
 #endif
 				path = m_dir + data->name;
+			CLocalFileSystem::GetFileInfo(path, isSymLink, NULL, NULL, NULL);
 		}
 
-        bool isSymLink = false;
-        CLocalFileSystem::GetFileInfo(path, isSymLink, NULL, NULL, NULL);
 		icon = pThis->GetIconIndex(data->dir ? dir : file, path, true, isSymLink);
 	}
 	return icon;
