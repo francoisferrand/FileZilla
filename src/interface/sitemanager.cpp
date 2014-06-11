@@ -801,7 +801,7 @@ bool CSiteManager::AddBookmark(wxString sitePath, const wxString& name, const wx
 bool CSiteManager::ClearBookmarks(wxString sitePath)
 {
 	wxChar c = sitePath.empty() ? 0 : sitePath[0];
-	if (sitePath[0] != '0')
+	if (c != '0')
 		return false;
 
 	sitePath = sitePath.Mid(1);
