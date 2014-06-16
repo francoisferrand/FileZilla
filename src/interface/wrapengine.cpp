@@ -334,7 +334,6 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 #else
 	(void)containsURL;
 #endif
-
 	return true;
 }
 
@@ -363,7 +362,7 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 
 #if WRAPDEBUG >= 3
 	static int level = 1;
-	plvl printf("Enter with max = %d\n", max);
+	plvl printf("Enter with max = %d, current = %d, sizer is %s\n", max, wnd ? wnd->GetRect().GetWidth() : -1, static_cast<char const*>(wxString(sizer->GetClassInfo()->GetClassName())));
 #endif
 
 	if (max <= 0)
@@ -470,6 +469,7 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 		else if ((subSizer = item->GetSizer()))
 		{
 			int subBorder = 0;
+			wxWindow* subWnd = wnd;
 
 			// Add border of static box sizer
 			wxStaticBoxSizer* sboxSizer;
@@ -477,13 +477,14 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 			{
 				int top, other;
 				sboxSizer->GetStaticBox()->GetBordersForSizer(&top, &other);
-				subBorder += other;
+				subBorder += other * 2;
+				subWnd = sboxSizer->GetStaticBox();
 			}
 
 #if WRAPDEBUG >= 3
 			level++;
 #endif
-			result |= WrapRecursive(0, subSizer, max - rborder - subBorder);
+			result |= WrapRecursive(subWnd, subSizer, max - lborder - rborder - subBorder);
 #if WRAPDEBUG >= 3
 			level--;
 #endif
@@ -498,9 +499,13 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 	}
 
 #if WRAPDEBUG >= 3
-	plvl printf("Leave: Success\n");
+	plvl printf("Leave: Success, new min: %d\n", sizer->CalcMin().x);
 #endif
 
+	wxStaticBoxSizer* sboxSizer = wxDynamicCast(sizer, wxStaticBoxSizer);
+	if( sboxSizer ) {
+		sboxSizer->GetStaticBox()->CacheBestSize(wxSize());
+	}
 
 	return result;
 }
@@ -1020,7 +1025,7 @@ bool CWrapEngine::LoadCache()
 	if (!pResources)
 		pResources = pElement->LinkEndChild(new TiXmlElement("Resources"))->ToElement();
 
-	wxString resourceDir = wxGetApp().GetResourceDir();
+	wxString resourceDir = wxGetApp().GetResourceDir() + _T("xrc/");
 	wxDir dir(resourceDir);
 
 	wxLogNull log;
