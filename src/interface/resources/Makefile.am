@@ -14,12 +14,14 @@ dist_resources_DATA = \
 
 xrcdir = $(pkgdatadir)/resources/xrc
 dist_xrc_DATA = \
+	xrc/certificate.xrc \
 	xrc/dialogs.xrc \
 	xrc/inputdialog.xrc \
 	xrc/menus.xrc \
 	xrc/netconfwizard.xrc \
 	xrc/quickconnectbar.xrc \
 	xrc/settings.xrc \
+	xrc/sitemanager.xrc \
 	xrc/toolbar.xrc \
 	xrc/update.xrc
 

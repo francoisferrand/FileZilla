@@ -1,4 +1,4 @@
-#include <filezilla.h>
+	#include <filezilla.h>
 #include "sitemanager.h"
 
 #include "filezillaapp.h"
@@ -55,13 +55,13 @@ bool CSiteManager::Load(TiXmlElement *pElement, CSiteManagerXmlHandler* pHandler
 					if (remoteDir)
 						data->m_remoteDir.SetSafePath(ConvLocal(remoteDir->Value()));
 
-					if (data->m_localDir.empty() && data->m_remoteDir.IsEmpty())
+					if (data->m_localDir.empty() && data->m_remoteDir.empty())
 					{
 						delete data;
 						continue;
 					}
 
-					if (!data->m_localDir.empty() && !data->m_remoteDir.IsEmpty())
+					if (!data->m_localDir.empty() && !data->m_remoteDir.empty())
 						data->m_sync = GetTextElementBool(pBookmark, "SyncBrowsing", false);
 
 					pHandler->AddBookmark(name, data);
@@ -100,7 +100,7 @@ CSiteManagerItemData_Site* CSiteManager::ReadServerElement(TiXmlElement *pElemen
 	if (remoteDir)
 		data->m_remoteDir.SetSafePath(ConvLocal(remoteDir->Value()));
 
-	if (!data->m_localDir.empty() && !data->m_remoteDir.IsEmpty())
+	if (!data->m_localDir.empty() && !data->m_remoteDir.empty())
 		data->m_sync = GetTextElementBool(pElement, "SyncBrowsing", false);
 
 	return data;
@@ -294,7 +294,7 @@ wxMenu* CSiteManager::GetSitesMenu()
 
 void CSiteManager::ClearIdMap()
 {
-	for (std::map<int, CSiteManagerItemData_Site*>::iterator iter = m_idMap.begin(); iter != m_idMap.end(); ++iter)
+	for (auto iter = m_idMap.begin(); iter != m_idMap.end(); ++iter)
 		delete iter->second;
 
 	m_idMap.clear();
@@ -303,7 +303,7 @@ void CSiteManager::ClearIdMap()
 wxMenu* CSiteManager::GetSitesMenu_Predefined(std::map<int, CSiteManagerItemData_Site*> &idMap)
 {
 	const wxString& defaultsDir = wxGetApp().GetDefaultsDir();
-	if (defaultsDir == _T(""))
+	if (defaultsDir.empty())
 		return 0;
 
 	wxFileName name(defaultsDir, _T("fzdefaults.xml"));
@@ -337,7 +337,7 @@ wxMenu* CSiteManager::GetSitesMenu_Predefined(std::map<int, CSiteManagerItemData
 
 CSiteManagerItemData_Site* CSiteManager::GetSiteById(int id)
 {
-	std::map<int, CSiteManagerItemData_Site*>::iterator iter = m_idMap.find(id);
+	auto iter = m_idMap.find(id);
 
 	CSiteManagerItemData_Site *pData;
 	if (iter != m_idMap.end())
@@ -384,7 +384,7 @@ bool CSiteManager::UnescapeSitePath(wxString path, std::list<wxString>& result)
 			}
 			else
 			{
-				if (!name.IsEmpty())
+				if (!name.empty())
 					result.push_back(name);
 				name.clear();
 			}
@@ -395,7 +395,7 @@ bool CSiteManager::UnescapeSitePath(wxString path, std::list<wxString>& result)
 	}
 	if (lastBackslash)
 		return false;
-	if (name != _T(""))
+	if (!name.empty())
 		result.push_back(name);
 
 	return !result.empty();
@@ -440,7 +440,7 @@ CSiteManagerItemData_Site* CSiteManager::GetSiteByPath(wxString sitePath)
 	else
 	{
 		const wxString& defaultsDir = wxGetApp().GetDefaultsDir();
-		if (defaultsDir == _T(""))
+		if (defaultsDir.empty())
 		{
 			wxMessageBoxEx(_("Site does not exist."), _("Invalid site path"));
 			return 0;
@@ -507,7 +507,7 @@ CSiteManagerItemData_Site* CSiteManager::GetSiteByPath(wxString sitePath)
 		TiXmlText* remoteDir = handle.FirstChildElement("RemoteDir").FirstChild().Text();
 		if (remoteDir)
 			remotePath.SetSafePath(ConvLocal(remoteDir->Value()));
-		if (!localPath.empty() && !remotePath.IsEmpty())
+		if (!localPath.empty() && !remotePath.empty())
 		{
 			data->m_sync = GetTextElementBool(pBookmark, "SyncBrowsing", false);
 		}
@@ -525,7 +525,7 @@ CSiteManagerItemData_Site* CSiteManager::GetSiteByPath(wxString sitePath)
 
 bool CSiteManager::GetBookmarks(wxString sitePath, std::list<wxString> &bookmarks)
 {
-	if (sitePath.IsEmpty())
+	if (sitePath.empty())
 		return false;
 	wxChar c = sitePath[0];
 	if (c != '0' && c != '1')
@@ -545,7 +545,7 @@ bool CSiteManager::GetBookmarks(wxString sitePath, std::list<wxString> &bookmark
 	else
 	{
 		const wxString& defaultsDir = wxGetApp().GetDefaultsDir();
-		if (defaultsDir == _T(""))
+		if (defaultsDir.empty())
 			return false;
 		pDocument = file.Load(wxFileName(defaultsDir, _T("fzdefaults.xml")));
 	}
@@ -594,7 +594,7 @@ bool CSiteManager::GetBookmarks(wxString sitePath, std::list<wxString> &bookmark
 		if (remoteDir)
 			remotePath.SetSafePath(ConvLocal(remoteDir->Value()));
 
-		if (localPath.empty() && remotePath.IsEmpty())
+		if (localPath.empty() && remotePath.empty())
 			continue;
 
 		bookmarks.push_back(name);
@@ -617,12 +617,12 @@ wxString CSiteManager::AddServer(CServer server)
 		wxString msg = file.GetError() + _T("\n") + _("The server could not be added.");
 		wxMessageBoxEx(msg, _("Error loading xml file"), wxICON_ERROR);
 
-		return _T("");
+		return wxString();
 	}
 
 	TiXmlElement* pElement = pDocument->FirstChildElement("Servers");
 	if (!pElement)
-		return _T("");
+		return wxString();
 
 	std::list<wxString> names;
 	for (TiXmlElement* pChild = pElement->FirstChildElement("Server"); pChild; pChild = pChild->NextSiblingElement("Server"))
@@ -667,11 +667,11 @@ wxString CSiteManager::AddServer(CServer server)
 	if (!file.Save(&error))
 	{
 		if (COptions::Get()->GetOptionVal(OPTION_DEFAULT_KIOSKMODE) == 2)
-			return _T("");
+			return wxString();
 
 		wxString msg = wxString::Format(_("Could not write \"%s\", any changes to the Site Manager could not be saved: %s"), file.GetFileName().GetFullPath().c_str(), error.c_str());
 		wxMessageBoxEx(msg, _("Error writing xml file"), wxICON_ERROR);
-		return _T("");
+		return wxString();
 	}
 
 	return _T("0/") + EscapeSegment(name);
@@ -711,7 +711,7 @@ TiXmlElement* CSiteManager::GetElementByPath(TiXmlElement* pNode, std::list<wxSt
 
 bool CSiteManager::AddBookmark(wxString sitePath, const wxString& name, const wxString &local_dir, const CServerPath &remote_dir, bool sync)
 {
-	if (local_dir.empty() && remote_dir.IsEmpty())
+	if (local_dir.empty() && remote_dir.empty())
 		return false;
 
 	wxChar c = sitePath.empty() ? 0 : sitePath[0];
@@ -780,7 +780,7 @@ bool CSiteManager::AddBookmark(wxString sitePath, const wxString& name, const wx
 	AddTextElement(pBookmark, "Name", name);
 	if (!local_dir.empty())
 		AddTextElement(pBookmark, "LocalDir", local_dir);
-	if (!remote_dir.IsEmpty())
+	if (!remote_dir.empty())
 		AddTextElement(pBookmark, "RemoteDir", remote_dir.GetSafePath());
 	if (sync)
 		AddTextElementRaw(pBookmark, "SyncBrowsing", "1");

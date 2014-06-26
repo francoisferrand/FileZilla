@@ -10,7 +10,7 @@
 #include <wx/dcclient.h>
 
 static const int statbarWidths[3] = {
-	-3, 0, 35
+	-3, 0, 25
 };
 #define FIELD_QUEUESIZE 1
 
@@ -91,11 +91,7 @@ void wxStatusBarEx::FixupFieldWidth(int field)
 	if (field != GetFieldsCount() - 1)
 		return;
 
-#ifdef __WXMSW__
-	// Gripper overlaps last field if not maximized
-	if (!m_parentWasMaximized && m_columnWidths[field] > 0)
-		m_columnWidths[field] += 6;
-#elif __WXGTK20__
+#if __WXGTK20__
 	// Gripper overlaps last all the time
 	if (m_columnWidths[field] > 0)
 		m_columnWidths[field] += 15;
@@ -105,23 +101,23 @@ void wxStatusBarEx::FixupFieldWidth(int field)
 void wxStatusBarEx::SetFieldWidth(int field, int width)
 {
 	field = GetFieldIndex(field);
+	if( field < 0 ) {
+		return;
+	}
+
 	m_columnWidths[field] = width;
-
 	FixupFieldWidth(field);
-
 	wxStatusBar::SetStatusWidths(GetFieldsCount(), m_columnWidths);
 }
 
 int wxStatusBarEx::GetFieldIndex(int field)
 {
-	if (field >= 0)
-	{
-		wxASSERT(field <= GetFieldsCount());
+	if (field >= 0) {
+		wxCHECK(field <= GetFieldsCount(), -1);
 	}
-	else
-	{
+	else {
 		field = GetFieldsCount() + field;
-		wxASSERT(field >= 0);
+		wxCHECK(field >= 0, -1);
 	}
 
 	return field;
@@ -140,9 +136,9 @@ void wxStatusBarEx::OnSize(wxSizeEvent&)
 			m_parentWasMaximized = isMaximized;
 
 			if (isMaximized)
-				m_columnWidths[count - 1] -= 6;
+				m_columnWidths[count - 1] -= 16;
 			else
-				m_columnWidths[count - 1] += 6;
+				m_columnWidths[count - 1] += 16;
 
 			wxStatusBar::SetStatusWidths(count, m_columnWidths);
 			Refresh();
@@ -200,9 +196,12 @@ void CWidgetsStatusBar::OnSize(wxSizeEvent& event)
 #endif
 }
 
-void CWidgetsStatusBar::AddChild(int field, int idx, wxWindow* pChild)
+bool CWidgetsStatusBar::AddChild(int field, int idx, wxWindow* pChild)
 {
 	field = GetFieldIndex(field);
+	if( field < 0 ) {
+		return false;
+	}
 
 	t_statbar_child data;
 	data.field = field;
@@ -211,13 +210,14 @@ void CWidgetsStatusBar::AddChild(int field, int idx, wxWindow* pChild)
 	m_children[idx] = data;
 
 	PositionChildren(field);
+
+	return true;
 }
 
 void CWidgetsStatusBar::RemoveChild(int idx)
 {
-	std::map<int, struct t_statbar_child>::iterator iter = m_children.find(idx);
-	if (iter != m_children.end())
-	{
+	auto iter = m_children.find(idx);
+	if (iter != m_children.end()) {
 		int field = iter->second.field;
 		m_children.erase(iter);
 		PositionChildren(field);
@@ -231,13 +231,15 @@ void CWidgetsStatusBar::PositionChildren(int field)
 
 	int offset = 2;
 
+#ifndef __WXMSW__
 	if (field + 1 == GetFieldsCount())
 	{
 		rect.SetWidth(m_columnWidths[field]);
 		offset += 5 + GetGripperWidth();
 	}
+#endif
 
-	for (std::map<int, struct t_statbar_child>::iterator iter = m_children.begin(); iter != m_children.end(); ++iter)
+	for (auto iter = m_children.begin(); iter != m_children.end(); ++iter)
 	{
 		if (iter->second.field != field)
 			continue;
@@ -258,44 +260,11 @@ void CWidgetsStatusBar::SetFieldWidth(int field, int width)
 		PositionChildren(i);
 }
 
-#ifdef __WXMSW__
-class wxStaticBitmapEx : public wxStaticBitmap
-{
-public:
-	wxStaticBitmapEx(wxWindow* parent, int id, const wxBitmap& bmp)
-		: wxStaticBitmap(parent, id, bmp)
-	{
-	};
-
-protected:
-	DECLARE_EVENT_TABLE()
-
-	// Make sure it is truly transparent, i.e. also works with
-	// themed status bars.
-	void OnErase(wxEraseEvent& event)
-	{
-	}
-
-	void OnPaint(wxPaintEvent& event)
-	{
-		wxPaintDC dc(this);
-		dc.DrawBitmap(GetBitmap(), 0, 0, true);
-	}
-};
-
-BEGIN_EVENT_TABLE(wxStaticBitmapEx, wxStaticBitmap)
-EVT_ERASE_BACKGROUND(wxStaticBitmapEx::OnErase)
-EVT_PAINT(wxStaticBitmapEx::OnPaint)
-END_EVENT_TABLE()
-#else
-#define wxStaticBitmapEx wxStaticBitmap
-#endif
-
-class CIndicator : public wxStaticBitmapEx
+class CIndicator : public wxStaticBitmap
 {
 public:
 	CIndicator(CStatusBar* pStatusBar, const wxBitmap& bmp)
-		: wxStaticBitmapEx(pStatusBar, wxID_ANY, bmp)
+		: wxStaticBitmap(pStatusBar, wxID_ANY, bmp)
 	{
 		m_pStatusBar = pStatusBar;
 	}
@@ -314,7 +283,7 @@ protected:
 	}
 };
 
-BEGIN_EVENT_TABLE(CIndicator, wxStaticBitmapEx)
+BEGIN_EVENT_TABLE(CIndicator, wxStaticBitmap)
 EVT_LEFT_UP(CIndicator::OnLeftMouseUp)
 EVT_RIGHT_UP(CIndicator::OnRightMouseUp)
 END_EVENT_TABLE()

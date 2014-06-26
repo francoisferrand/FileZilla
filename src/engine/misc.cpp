@@ -7,10 +7,9 @@
 
 wxString GetIPV6LongForm(wxString short_address)
 {
-	if (!short_address.empty() && short_address[0] == '[')
-	{
+	if (!short_address.empty() && short_address[0] == '[') {
 		if (short_address.Last() != ']')
-			return _T("");
+			return wxString();
 		short_address.RemoveLast();
 		short_address = short_address.Mid(1);
 	}
@@ -29,23 +28,21 @@ wxString GetIPV6LongForm(wxString short_address)
 
 	const unsigned int len = short_address.Len();
 	if (len > 39)
-		return _T("");
+		return wxString();
 
 	// First part, before possible ::
 	unsigned int i = 0;
 	unsigned int grouplength = 0;
 
-	wxChar const* s = short_address.c_str();
-	for (i = 0; i < len; ++i)
-	{
+	wxChar const* s = short_address.c_str(); // Get it zero-terminated.
+	for (i = 0; i < len + 1; ++i) {
 		const wxChar& c = s[i];
-		if (c == ':') {
-			if (!grouplength)
-			{
+		if (c == ':' || !c) {
+			if (!grouplength) {
 				// Empty group length, not valid
 				if (!c || s[i + 1] != ':')
-					return _T("");
-				i++;
+					return wxString();
+				++i;
 				break;
 			}
 
@@ -53,27 +50,24 @@ wxString GetIPV6LongForm(wxString short_address)
 			for (unsigned int j = grouplength; j > 0; j--)
 				*out++ = s[i - j];
 			// End of string...
-			if (!c)
-			{
+			if (!c) {
 				if (!*out)
 					// ...on time
 					return buffer;
 				else
 					// ...premature
-					return _T("");
+					return wxString();
 			}
-			else if (!*out)
-			{
+			else if (!*out) {
 				// Too long
-				return _T("");
+				return wxString();
 			}
 
-			out++;
+			++out;
 
 			grouplength = 0;
-			if (s[i + 1] == ':')
-			{
-				i++;
+			if (s[i + 1] == ':') {
+				++i;
 				break;
 			}
 			continue;
@@ -82,11 +76,11 @@ wxString GetIPV6LongForm(wxString short_address)
 				 (c < 'a' || c > 'f'))
 		{
 			// Invalid character
-			return _T("");
+			return wxString();
 		}
 		// Too long group
 		if (++grouplength > 4)
-			return _T("");
+			return wxString();
 	}
 
 	// Second half after ::
@@ -99,7 +93,7 @@ wxString GetIPV6LongForm(wxString short_address)
 		if (out < end_first)
 		{
 			// Too long
-			return _T("");
+			return wxString();
 		}
 
 		const wxChar& c = s[i];
@@ -108,7 +102,7 @@ wxString GetIPV6LongForm(wxString short_address)
 			if (!grouplength)
 			{
 				// Empty group length, not valid
-				return _T("");
+				return wxString();
 			}
 
 			out -= 5 - grouplength;
@@ -120,24 +114,24 @@ wxString GetIPV6LongForm(wxString short_address)
 				 (c < 'a' || c > 'f'))
 		{
 			// Invalid character
-			return _T("");
+			return wxString();
 		}
 		// Too long group
 		if (++grouplength > 4)
-			return _T("");
+			return wxString();
 		*out-- = c;
 	}
 	if (!grouplength)
 	{
 		// Empty group length, not valid
-		return _T("");
+		return wxString();
 	}
 	out -= 5 - grouplength;
 	out += 2;
 
 	int diff = out - end_first;
 	if (diff < 0 || diff % 5)
-		return _T("");
+		return wxString();
 
 	return buffer;
 }
@@ -233,7 +227,7 @@ bool IsRoutableAddress(const wxString& address, enum CSocket::address_family fam
 
 bool IsIpAddress(const wxString& address)
 {
-	if (GetIPV6LongForm(address) != _T(""))
+	if (!GetIPV6LongForm(address).empty())
 		return true;
 
 	int segment = 0;
@@ -364,8 +358,7 @@ void MakeLowerAscii(wxString& str)
 
 wxString GetDependencyVersion(dependency::type d)
 {
-	switch (d)
-	{
+	switch (d) {
 	case dependency::wxwidgets:
 		return wxVERSION_NUM_DOT_STRING_T;
 	case dependency::gnutls:
@@ -379,16 +372,13 @@ wxString GetDependencyVersion(dependency::type d)
 	case dependency::sqlite:
 		return wxString::FromUTF8(sqlite3_libversion());
 	default:
-		return _T("");
+		return wxString();
 	}
-
-	return _T("");
 }
 
 wxString GetDependencyName(dependency::type d)
 {
-	switch (d)
-	{
+	switch (d) {
 	case dependency::wxwidgets:
 		return _T("wxWidgets");
 	case dependency::gnutls:
@@ -396,10 +386,8 @@ wxString GetDependencyName(dependency::type d)
 	case dependency::sqlite:
 		return _T("SQLite");
 	default:
-		return _T("");
+		return wxString();
 	}
-
-	return _T("");
 }
 
 wxString ListTlsCiphers(const wxString& priority)

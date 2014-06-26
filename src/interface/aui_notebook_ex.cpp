@@ -3,6 +3,8 @@
 #include "aui_notebook_ex.h"
 #include <wx/dcmirror.h>
 
+#include <memory>
+
 #ifdef __WXMSW__
 #define TABCOLOUR wxSYS_COLOUR_3DFACE
 #else
@@ -199,12 +201,11 @@ struct wxAuiTabArtExData
 class wxAuiTabArtEx : public wxAuiDefaultTabArt
 {
 public:
-	wxAuiTabArtEx(wxAuiNotebookEx* pNotebook, bool bottom, CSharedPointer<struct wxAuiTabArtExData> data)
+	wxAuiTabArtEx(wxAuiNotebookEx* pNotebook, bool bottom, std::shared_ptr<wxAuiTabArtExData> const& data)
+		: m_pNotebook(pNotebook)
+		, m_data(data)
+		, m_bottom(bottom)
 	{
-		m_pNotebook = pNotebook;
-		m_fonts_initialized = false;
-		m_bottom = bottom;
-		m_data = data;
 	}
 
 	virtual wxAuiTabArt* Clone()
@@ -224,7 +225,7 @@ public:
 		int pos;
 		if ((pos = caption.Find(_T(" ("))) != -1)
 			text = text.Left(pos);
-		std::map<wxString, int>::iterator iter = m_data->maxSizes.find(text);
+		auto iter = m_data->maxSizes.find(text);
 		if (iter == m_data->maxSizes.end())
 			m_data->maxSizes[text] = size.x;
 		else
@@ -277,22 +278,23 @@ public:
 		}
 		CFilterDC filter_dc(dc, pane.active ? 1 : 0, (m_tabCtrlHeight % 2) != 0, m_bottom);
 		wxAuiGenericTabArt::DrawTab(*((wxDC*)&filter_dc), wnd, pane, in_rect, close_button_state, out_tab_rect, out_button_rect, x_extent);
-		m_baseColour = wxSystemSettings::GetColour(TABCOLOUR);
+
 	}
 
 	virtual void DrawBackground(wxDC& dc, wxWindow* wnd, const wxRect& rect)
 	{
+		m_baseColour = wxSystemSettings::GetColour(TABCOLOUR);
 		CFilterDC filter_dc(dc, 2, (m_tabCtrlHeight % 2) != 0, m_bottom);
 		wxAuiGenericTabArt::DrawBackground(*((wxDC*)&filter_dc), wnd, rect);
 	}
 protected:
 	wxAuiNotebookEx* m_pNotebook;
 
-	CSharedPointer<struct wxAuiTabArtExData> m_data;
+	std::shared_ptr<wxAuiTabArtExData> m_data;
 
 	wxFont m_original_normal_font;
 	wxFont m_highlighted_font;
-	bool m_fonts_initialized;
+	bool m_fonts_initialized{};
 	bool m_bottom;
 };
 
@@ -321,7 +323,7 @@ void wxAuiNotebookEx::RemoveExtraBorders()
 
 void wxAuiNotebookEx::SetExArtProvider()
 {
-	SetArtProvider(new wxAuiTabArtEx(this, (GetWindowStyle() & wxAUI_NB_BOTTOM) != 0, new struct wxAuiTabArtExData));
+	SetArtProvider(new wxAuiTabArtEx(this, (GetWindowStyle() & wxAUI_NB_BOTTOM) != 0, std::make_shared<wxAuiTabArtExData>()));
 }
 
 bool wxAuiNotebookEx::SetPageText(size_t page_idx, const wxString& text)

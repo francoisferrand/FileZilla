@@ -77,7 +77,7 @@ CFileZillaEnginePrivate::~CFileZillaEnginePrivate()
 	delete m_pCurrentCommand;
 
 	// Delete notification list
-	for (std::list<CNotification *>::iterator iter = m_NotificationList.begin(); iter != m_NotificationList.end(); ++iter)
+	for (auto iter = m_NotificationList.begin(); iter != m_NotificationList.end(); ++iter)
 		delete *iter;
 
 	// Remove ourself from the engine list
@@ -173,7 +173,7 @@ int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
 	m_pLogging->LogMessage(Debug_Debug, _T("CFileZillaEnginePrivate::ResetOperation(%d)"), nErrorCode);
 
 	if (nErrorCode & FZ_REPLY_DISCONNECTED)
-		m_lastListDir.Clear();
+		m_lastListDir.clear();
 
 	if (m_pCurrentCommand)
 	{
@@ -336,10 +336,10 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 	if (!IsConnected())
 		return FZ_REPLY_NOTCONNECTED;
 
-	if (command.GetPath().IsEmpty() && command.GetSubDir() != _T(""))
+	if (command.GetPath().empty() && !command.GetSubDir().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
-	if (command.GetFlags() & LIST_FLAG_LINK && command.GetSubDir() == _T(""))
+	if (command.GetFlags() & LIST_FLAG_LINK && command.GetSubDir().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
 	bool refresh = (command.GetFlags() & LIST_FLAG_REFRESH) != 0;
@@ -347,15 +347,15 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 	if (refresh && avoid)
 		return FZ_REPLY_SYNTAXERROR;
 
-	if (!refresh && !command.GetPath().IsEmpty())
+	if (!refresh && !command.GetPath().empty())
 	{
 		const CServer* pServer = m_pControlSocket->GetCurrentServer();
 		if (pServer)
 		{
 			CServerPath path(CPathCache::Lookup(*pServer, command.GetPath(), command.GetSubDir()));
-			if (path.IsEmpty() && command.GetSubDir().IsEmpty())
+			if (path.empty() && command.GetSubDir().empty())
 				path = command.GetPath();
-			if (!path.IsEmpty())
+			if (!path.empty())
 			{
 				CDirectoryListing *pListing = new CDirectoryListing;
 				CDirectoryCache cache;
@@ -411,7 +411,7 @@ int CFileZillaEnginePrivate::RawCommand(const CRawCommand& command)
 	if (IsBusy())
 		return FZ_REPLY_BUSY;
 
-	if (command.GetCommand() == _T(""))
+	if (command.GetCommand().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
 	m_pCurrentCommand = command.Clone();
@@ -426,7 +426,7 @@ int CFileZillaEnginePrivate::Delete(const CDeleteCommand& command)
 	if (IsBusy())
 		return FZ_REPLY_BUSY;
 
-	if (command.GetPath().IsEmpty() ||
+	if (command.GetPath().empty() ||
 		command.GetFiles().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
@@ -442,8 +442,8 @@ int CFileZillaEnginePrivate::RemoveDir(const CRemoveDirCommand& command)
 	if (IsBusy())
 		return FZ_REPLY_BUSY;
 
-	if (command.GetPath().IsEmpty() ||
-		command.GetSubDir() == _T(""))
+	if (command.GetPath().empty() ||
+		command.GetSubDir().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
 	m_pCurrentCommand = command.Clone();
@@ -458,7 +458,7 @@ int CFileZillaEnginePrivate::Mkdir(const CMkdirCommand& command)
 	if (IsBusy())
 		return FZ_REPLY_BUSY;
 
-	if (command.GetPath().IsEmpty() || !command.GetPath().HasParent())
+	if (command.GetPath().empty() || !command.GetPath().HasParent())
 		return FZ_REPLY_SYNTAXERROR;
 
 	m_pCurrentCommand = command.Clone();
@@ -473,8 +473,8 @@ int CFileZillaEnginePrivate::Rename(const CRenameCommand& command)
 	if (IsBusy())
 		return FZ_REPLY_BUSY;
 
-	if (command.GetFromPath().IsEmpty() || command.GetToPath().IsEmpty() ||
-		command.GetFromFile() == _T("") || command.GetToFile() == _T(""))
+	if (command.GetFromPath().empty() || command.GetToPath().empty() ||
+		command.GetFromFile().empty() || command.GetToFile().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
 	m_pCurrentCommand = command.Clone();
@@ -489,8 +489,8 @@ int CFileZillaEnginePrivate::Chmod(const CChmodCommand& command)
 	if (IsBusy())
 		return FZ_REPLY_BUSY;
 
-	if (command.GetPath().IsEmpty() || command.GetFile().IsEmpty() ||
-		command.GetPermission() == _T(""))
+	if (command.GetPath().empty() || command.GetFile().empty() ||
+		command.GetPermission().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
 	m_pCurrentCommand = command.Clone();
@@ -608,11 +608,6 @@ void CFileZillaEnginePrivate::OnTimer(wxTimerEvent&)
 		return;
 	}
 	wxASSERT(!IsConnected());
-
-#if 0//__WXDEBUG__
-	const CConnectCommand *pConnectCommand = (CConnectCommand *)m_pCurrentCommand;
-	wxASSERT(!GetRemainingReconnectDelay(pConnectCommand->GetServer()));
-#endif
 
 	delete m_pControlSocket;
 	m_pControlSocket = 0;

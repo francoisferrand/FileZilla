@@ -190,7 +190,7 @@ bool CAsyncRequestQueue::ProcessNextRequest()
 					else
 					{
 						// For the notifications already in the request queue, we have to set the queue action directly
-						for (std::list<t_queueEntry>::iterator iter = ++m_requestList.begin(); iter != m_requestList.end(); ++iter)
+						for (auto iter = ++m_requestList.begin(); iter != m_requestList.end(); ++iter)
 						{
 							if (pNotification->GetRequestID() != reqId_fileexists)
 								continue;
@@ -261,7 +261,7 @@ bool CAsyncRequestQueue::ProcessNextRequest()
 					int res = dlg.ShowModal();
 					if (res == wxID_OK)
 					{
-						if (dlg.GetValue() == _T(""))
+						if (dlg.GetValue().empty())
 							continue; // Disallow empty names
 						if (dlg.GetValue() == defaultName)
 						{
@@ -374,7 +374,7 @@ void CAsyncRequestQueue::ClearPending(const CFileZillaEngine *pEngine)
 
 	// Remove older requests coming from the same engine, but never the first
 	// entry in the list as that one displays a dialog at this moment.
-	for (std::list<t_queueEntry>::iterator iter = ++m_requestList.begin(); iter != m_requestList.end(); ++iter)
+	for (auto iter = ++m_requestList.begin(); iter != m_requestList.end(); ++iter)
 	{
 		if (iter->pEngine == pEngine)
 		{

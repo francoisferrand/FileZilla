@@ -17,7 +17,7 @@ wxString GetAsURL(const wxString& dir)
 	const wxWX2MBbuf utf8 = dir.mb_str(wxConvUTF8);
 
 	if (!utf8)
-		return wxEmptyString;
+		return wxString();
 
 	const char* p = utf8;
 	while (*p)
@@ -83,7 +83,7 @@ bool OpenInFileManager(const wxString& dir)
 #endif
 	{
 		wxString url = GetAsURL(dir);
-		if (!url.IsEmpty())
+		if (!url.empty())
 			ret = wxLaunchDefaultBrowser(url);
 	}
 
@@ -99,25 +99,25 @@ wxString GetSystemOpenCommand(wxString file, bool &program_exists)
 	wxFileName fn(file);
 
 	const wxString& ext = fn.GetExt();
-	if (ext == _T(""))
-		return _T("");
+	if (ext.empty())
+		return wxString();
 
 	for (;;)
 	{
 		wxFileType* pType = wxTheMimeTypesManager->GetFileTypeFromExtension(ext);
 		if (!pType)
-			return _T("");
+			return wxString();
 
 		wxString cmd;
 		if (!pType->GetOpenCommand(&cmd, wxFileType::MessageParameters(file)))
 		{
 			delete pType;
-			return _T("");
+			return wxString();
 		}
 		delete pType;
 
 		if (cmd.empty())
-			return wxEmptyString;
+			return wxString();
 
 		program_exists = false;
 
@@ -168,14 +168,14 @@ wxString GetSystemOpenCommand(wxString file, bool &program_exists)
 		return cmd;
 	}
 
-	return wxEmptyString;
+	return wxString();
 }
 
 bool UnquoteCommand(wxString& command, wxString& arguments, bool is_dde)
 {
 	arguments = _T("");
 
-	if (command == _T(""))
+	if (command.empty())
 		return true;
 
 	wxChar inQuotes = 0;
@@ -386,7 +386,7 @@ CLocalPath GetDownloadDir()
 					if (pos != wxNOT_FOUND) {
 						wxString value = line.AfterFirst(wxT('='));
 						value = ShellUnescape(value);
-						if (!value.IsEmpty() && wxDirExists(value))
+						if (!value.empty() && wxDirExists(value))
 							return CLocalPath(value);
 						else
 							break;

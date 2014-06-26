@@ -46,7 +46,7 @@ void CRecursiveOperation::OnStateChange(CState* pState, enum t_statechange_notif
 	{
 		wxASSERT(pState);
 		wxASSERT(notification == STATECHANGE_REMOTE_DIR);
-		ProcessDirectoryListing(pState->GetRemoteDir().Value());
+		ProcessDirectoryListing(pState->GetRemoteDir().get());
 	}
 }
 
@@ -54,7 +54,7 @@ void CRecursiveOperation::StartRecursiveOperation(enum OperationMode mode, const
 {
 	wxCHECK_RET(m_operationMode == recursive_none, _T("StartRecursiveOperation called with m_operationMode != recursive_none"));
 	wxCHECK_RET(m_pState->IsRemoteConnected(), _T("StartRecursiveOperation while disconnected"));
-	wxCHECK_RET(!startDir.IsEmpty(), _T("Empty startDir in StartRecursiveOperation"));
+	wxCHECK_RET(!startDir.empty(), _T("Empty startDir in StartRecursiveOperation"));
 
 	if (mode == recursive_chmod && !m_pChmodDlg)
 		return;
@@ -73,7 +73,7 @@ void CRecursiveOperation::StartRecursiveOperation(enum OperationMode mode, const
 
 	m_startDir = startDir;
 
-	if (finalDir.IsEmpty())
+	if (finalDir.empty())
 		m_finalDir = startDir;
 	else
 		m_finalDir = finalDir;
@@ -132,7 +132,7 @@ bool CRecursiveOperation::NextOperation()
 
 bool CRecursiveOperation::BelowRecursionRoot(const CServerPath& path, CNewDir &dir)
 {
-	if (!dir.start_dir.IsEmpty())
+	if (!dir.start_dir.empty())
 	{
 		if (path.IsSubdirOf(dir.start_dir, false))
 			return true;
@@ -195,7 +195,7 @@ void CRecursiveOperation::ProcessDirectoryListing(const CDirectoryListing* pDire
 		return;
 	}
 
-	if (m_operationMode == recursive_delete && dir.doVisit && dir.subdir != _T(""))
+	if (m_operationMode == recursive_delete && dir.doVisit && !dir.subdir.empty())
 	{
 		// After recursing into directory to delete its contents, delete directory itself
 		// Gets handled in NextOperation
@@ -237,7 +237,7 @@ void CRecursiveOperation::ProcessDirectoryListing(const CDirectoryListing* pDire
 	CFilterManager filter;
 
 	// Is operation restricted to a single child?
-	bool restrict = !dir.restrict.IsEmpty();
+	bool restrict = !dir.restrict.empty();
 
 	std::list<wxString> filesToDelete;
 

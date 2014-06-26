@@ -4,10 +4,10 @@
 
 CLoginManager CLoginManager::m_theLoginManager;
 
-bool CLoginManager::GetPassword(CServer &server, bool silent, wxString name /*=_T("")*/, wxString challenge /*=_T("")*/)
+bool CLoginManager::GetPassword(CServer &server, bool silent, wxString const& name, wxString const& challenge)
 {
 	wxASSERT(!silent || server.GetLogonType() == ASK || server.GetLogonType() == INTERACTIVE);
-	wxASSERT(challenge == _T("") || server.GetLogonType() == INTERACTIVE);
+	wxASSERT(challenge.empty() || server.GetLogonType() == INTERACTIVE);
 
 	if (server.GetLogonType() == ASK)
 	{
@@ -31,18 +31,18 @@ bool CLoginManager::GetPassword(CServer &server, bool silent, wxString name /*=_
 	return DisplayDialog(server, name, challenge);
 }
 
-bool CLoginManager::DisplayDialog(CServer &server, wxString name, wxString challenge)
+bool CLoginManager::DisplayDialog(CServer &server, wxString const& name, wxString challenge)
 {
 	wxDialog pwdDlg;
 	wxXmlResource::Get()->LoadDialog(&pwdDlg, wxGetApp().GetTopWindow(), _T("ID_ENTERPASSWORD"));
-	if (name == _T(""))
+	if (name.empty())
 	{
 		pwdDlg.GetSizer()->Show(XRCCTRL(pwdDlg, "ID_NAMELABEL", wxStaticText), false, true);
 		pwdDlg.GetSizer()->Show(XRCCTRL(pwdDlg, "ID_NAME", wxStaticText), false, true);
 	}
 	else
 		XRCCTRL(pwdDlg, "ID_NAME", wxStaticText)->SetLabel(name);
-	if (challenge == _T(""))
+	if (challenge.empty())
 	{
 		pwdDlg.GetSizer()->Show(XRCCTRL(pwdDlg, "ID_CHALLENGELABEL", wxStaticText), false, true);
 		pwdDlg.GetSizer()->Show(XRCCTRL(pwdDlg, "ID_CHALLENGE", wxTextCtrl), false, true);
@@ -58,7 +58,7 @@ bool CLoginManager::DisplayDialog(CServer &server, wxString name, wxString chall
 	}
 	XRCCTRL(pwdDlg, "ID_HOST", wxStaticText)->SetLabel(server.FormatHost());
 
-	if (server.GetUser() == _T(""))
+	if (server.GetUser().empty())
 	{
 		pwdDlg.SetTitle(_("Enter username and password"));
 		XRCCTRL(pwdDlg, "ID_OLD_USER_LABEL", wxStaticText)->Hide();
@@ -91,15 +91,15 @@ bool CLoginManager::DisplayDialog(CServer &server, wxString name, wxString chall
 	pwdDlg.GetSizer()->SetSizeHints(&pwdDlg);
 
 	wxString user;
-	while (user == _T(""))
+	while (user.empty())
 	{
 		if (pwdDlg.ShowModal() != wxID_OK)
 			return false;
 
-		if (server.GetUser() == _T(""))
+		if (server.GetUser().empty())
 		{
 			user = XRCCTRL(pwdDlg, "ID_NEW_USER", wxTextCtrl)->GetValue();
-			if (user == _T(""))
+			if (user.empty())
 			{
 				wxMessageBoxEx(_("No username given."), _("Invalid input"), wxICON_EXCLAMATION);
 				continue;
@@ -129,7 +129,7 @@ void CLoginManager::CachedPasswordFailed(const CServer& server)
 	if (server.GetLogonType() != ASK)
 		return;
 
-	for (std::list<t_passwordcache>::iterator iter = m_passwordCache.begin(); iter != m_passwordCache.end(); ++iter)
+	for (auto iter = m_passwordCache.begin(); iter != m_passwordCache.end(); ++iter)
 	{
 		if (iter->host != server.GetHost())
 			continue;

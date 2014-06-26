@@ -9,9 +9,25 @@
 #include <wx/statbox.h>
 #include <wx/wizard.h>
 
+#ifdef __WXGTK3__
+#include <gtk/gtk.h>
+#endif
+
+#ifdef max
+#undef max
+#endif
+#include <algorithm>
+
 bool CWrapEngine::m_use_cache = true;
 
 #define WRAPDEBUG 0
+
+#if WRAPDEBUG
+#define WRAPASSERT(x) wxASSERT(x)
+#else
+#define WRAPASSERT(x)
+#endif
+
 // Chinese equivalents to ".", "," and ":"
 static const wxChar noWrapChars_Chinese[] = { '.', ',', ':', 0x3002, 0xFF0C, 0xFF1A, 0};
 // Remark: Chinese (Taiwan) uses ascii punctuation marks though, but those
@@ -37,11 +53,11 @@ bool CWrapEngine::CanWrapBefore(const wxChar& c)
 
 bool CWrapEngine::WrapTextChinese(wxWindow* parent, wxString &text, unsigned long maxLength)
 {
-	wxASSERT(text.Find(_T("  ")) == -1);
-	wxASSERT(text.Find(_T(" \n")) == -1);
-	wxASSERT(text.Find(_T("\n ")) == -1);
-	wxASSERT(text.Last() != ' ');
-	wxASSERT(text.Last() != '\n');
+	WRAPASSERT(text.Find(_T("  ")) == -1);
+	WRAPASSERT(text.Find(_T(" \n")) == -1);
+	WRAPASSERT(text.Find(_T("\n ")) == -1);
+	WRAPASSERT(text.Last() != ' ');
+	WRAPASSERT(text.Last() != '\n');
 
 	// See comment at start of WrapText function what this function does
 	wxString wrappedText;
@@ -86,7 +102,7 @@ bool CWrapEngine::WrapTextChinese(wxWindow* parent, wxString &text, unsigned lon
 			else
 				lineLength += iter->second;
 
-			wxASSERT(*p != '\r');
+			WRAPASSERT(*p != '\r');
 			if (*p == '\n')
 			{
 				// Wrap on newline
@@ -145,7 +161,7 @@ bool CWrapEngine::WrapTextChinese(wxWindow* parent, wxString &text, unsigned lon
 		}
 	}
 
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 	wxString temp = wrappedText;
 	wxASSERT(temp.Find(_T("  ")) == -1);
 	wxASSERT(temp.Find(_T(" \n")) == -1);
@@ -153,7 +169,7 @@ bool CWrapEngine::WrapTextChinese(wxWindow* parent, wxString &text, unsigned lon
 	wxASSERT(temp.Last() != ' ');
 	wxASSERT(temp.Last() != '\n');
 	temp.Replace(_T("&"), _T(""));
-	while (temp != _T(""))
+	while (!temp.empty())
 	{
 		wxString piece;
 		int pos = temp.Find(_T("\n"));
@@ -202,14 +218,14 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 	if (!m_font.IsOk())
 		m_font = parent->GetFont();
 
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 	const wxString original = text;
 #endif
 
 	if (m_wrapOnEveryChar)
 	{
 		bool res = WrapTextChinese(parent, text, maxLength);
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 		wxString unwrapped = UnwrapText(text);
 		wxASSERT(original == unwrapped);
 #endif
@@ -269,7 +285,7 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 		if (lineLength + spaceWidth + width > maxLength)
 		{
 			// Cannot be appended to current line without overflow, so start a new line
-			if (wrappedText != _T(""))
+			if (!wrappedText.empty())
 				wrappedText += _T("\n");
 			wrappedText += text.Mid(start, wrapAfter - start);
 			if (wrapAfter < strLen && text[wrapAfter] != ' ' && text[wrapAfter] != '\0')
@@ -281,7 +297,7 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 
 				if( i != wrapAfter )
 				{
-					if (wrappedText != _T(""))
+					if (!wrappedText.empty())
 						wrappedText += _T("\n");
 					wrappedText += text.Mid(wrapAfter + 1, i - wrapAfter - 1);
 				}
@@ -299,7 +315,7 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 		}
 		else if (lineLength + spaceWidth + width + spaceWidth >= maxLength)
 		{
-			if (wrappedText != _T(""))
+			if (!wrappedText.empty())
 				wrappedText += _T("\n");
 			wrappedText += text.Mid(start, i - start);
 			if (i < strLen && text[i] != ' ' && text[i] != '\0')
@@ -321,14 +337,14 @@ bool CWrapEngine::WrapText(wxWindow* parent, wxString& text, unsigned long maxLe
 	}
 	if (start < strLen)
 	{
-		if (wrappedText != _T(""))
+		if (!wrappedText.empty())
 			wrappedText += _T("\n");
 		wrappedText += text.Mid(start);
 	}
 
 	text = wrappedText;
 
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 		wxString unwrapped = UnwrapText(text);
 		wxASSERT(original == unwrapped || containsURL);
 #else
@@ -375,8 +391,7 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 
 	int result = 0;
 
-	for (unsigned int i = 0; i < sizer->GetChildren().GetCount(); i++)
-	{
+	for (unsigned int i = 0; i < sizer->GetChildren().GetCount(); ++i) {
 		wxSizerItem* item = sizer->GetItem(i);
 		if (!item || !item->IsShown())
 			continue;
@@ -400,11 +415,9 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 
 		wxWindow* window;
 		wxSizer* subSizer = 0;
-		if ((window = item->GetWindow()))
-		{
+		if ((window = item->GetWindow())) {
 			wxStaticText* text = wxDynamicCast(window, wxStaticText);
-			if (text)
-			{
+			if (text) {
 #ifdef __WXMAC__
 				const int offset = 3;
 #else
@@ -422,8 +435,14 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 					return result | wrap_failed;
 				}
 				text->SetLabel(str);
-
 				result |= wrap_didwrap;
+
+#ifdef __WXGTK3__
+				gtk_widget_set_size_request(text->GetHandle(), -1, -1);
+				GtkRequisition req;
+				gtk_widget_get_preferred_size(text->GetHandle(), 0, &req);
+				text->CacheBestSize(wxSize(req.width, req.height));
+#endif
 				continue;
 			}
 
@@ -458,7 +477,8 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 			if (wxDynamicCast(window, wxCheckBox) || wxDynamicCast(window, wxRadioButton) || wxDynamicCast(window, wxChoice))
 			{
 #if WRAPDEBUG >= 3
-				plvl printf("Leave: WrapRecursive on unshrinkable controls failed\n");
+				plvl printf("Leave: WrapRecursive on unshrinkable control failed: %s\n",
+					static_cast<char const*>(wxString(window->GetClassInfo()->GetClassName())));
 #endif
 				result |= wrap_failed;
 				return result;
@@ -498,14 +518,23 @@ int CWrapEngine::WrapRecursive(wxWindow* wnd, wxSizer* sizer, int max)
 		}
 	}
 
+	wxStaticBoxSizer* sboxSizer = wxDynamicCast(sizer, wxStaticBoxSizer);
+	if( sboxSizer ) {
+#ifdef __WXGTK3__
+		gtk_widget_set_size_request(sboxSizer->GetStaticBox()->GetHandle(), -1, -1);
+		GtkRequisition req;
+		gtk_widget_get_preferred_size(sboxSizer->GetStaticBox()->GetHandle(), 0, &req);
+		sboxSizer->GetStaticBox()->CacheBestSize(wxSize(req.width, req.height));
+#elif defined(__WXMAC__) || defined(__WXGTK__)
+		sboxSizer->GetStaticBox()->CacheBestSize(wxSize(0, 0));
+#else
+		sboxSizer->GetStaticBox()->CacheBestSize(wxDefaultSize);
+#endif
+	}
+
 #if WRAPDEBUG >= 3
 	plvl printf("Leave: Success, new min: %d\n", sizer->CalcMin().x);
 #endif
-
-	wxStaticBoxSizer* sboxSizer = wxDynamicCast(sizer, wxStaticBoxSizer);
-	if( sboxSizer ) {
-		sboxSizer->GetStaticBox()->CacheBestSize(wxSize());
-	}
 
 	return result;
 }
@@ -544,36 +573,34 @@ void CWrapEngine::UnwrapRecursive_Wrapped(const std::list<int> &wrapped, std::ve
 
 bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, const char* name /*=""*/, wxSize canvas /*=wxSize()*/, wxSize minRequestedSize /*wxSize()*/)
 {
+#ifdef __WXMAC__
+	const int offset = 6;
+#elif defined(__WXGTK__)
+	const int offset = 0;
+#else
+	const int offset = 0;
+#endif
+
 	int maxWidth = GetWidthFromCache(name);
-	if (maxWidth)
-	{
-		for (std::vector<wxWindow*>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
-		{
+	if (maxWidth) {
+		for (auto iter = windows.begin(); iter != windows.end(); ++iter) {
 			wxSizer* pSizer = (*iter)->GetSizer();
 			if (!pSizer)
 				continue;
 
 			pSizer->Layout();
 
-#ifdef __WXMAC__
-			const int offset = 6;
-#elif defined(__WXGTK__)
-			const int offset = 0;
-#else
-			const int offset = 0;
-#endif
-
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 			int res =
 #endif
 			WrapRecursive(*iter, pSizer, maxWidth - offset);
-			wxASSERT(!(res & wrap_failed));
+			WRAPASSERT(!(res & wrap_failed));
 			pSizer->Layout();
 			pSizer->Fit(*iter);
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 			wxSize size = pSizer->GetMinSize();
 #endif
-			wxASSERT(size.x <= maxWidth);
+			WRAPASSERT(size.x <= maxWidth);
 		}
 		return true;
 	}
@@ -582,7 +609,7 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 
 	wxSize size = minRequestedSize;
 
-	for (std::vector<wxWindow*>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
+	for (auto iter = windows.begin(); iter != windows.end(); ++iter)
 	{
 		wxSizer* pSizer = (*iter)->GetSizer();
 		if (!pSizer)
@@ -622,17 +649,11 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 		std::list<int> didwrap;
 
 		wxSize size = minRequestedSize;
-		for (std::vector<wxWindow*>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
+		int res = 0;
+		for (auto iter = windows.begin(); iter != windows.end(); ++iter)
 		{
 			wxSizer* pSizer = (*iter)->GetSizer();
-#ifdef __WXMAC__
-			const int offset = 6;
-#elif defined(__WXGTK__)
-			const int offset = 0;
-#else
-			const int offset = 0;
-#endif
-			int res = WrapRecursive(*iter, pSizer, desiredWidth - offset);
+			res = WrapRecursive(*iter, pSizer, desiredWidth - offset);
 			if (res & wrap_didwrap)
 				pSizer->Layout();
 			didwrap.push_back(res);
@@ -645,7 +666,7 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 		}
 
 #if WRAPDEBUG > 0
-		printf("Current: % 4d % 4d   desiredWidth: %d, min: %d, max: %d\n", size.GetWidth(), size.GetHeight(), desiredWidth, min, max);
+		printf("After current wrapping: size=%dx%d  desiredWidth=%d  min=%d  max=%d  res=%d\n", size.GetWidth(), size.GetHeight(), desiredWidth, min, max, res);
 #endif
 		if (size.GetWidth() > desiredWidth)
 		{
@@ -668,7 +689,7 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 
 		double newRatio = ((double)(size.GetWidth() + canvas.x) / (size.GetHeight() + canvas.y));
 #if WRAPDEBUG > 0
-		printf("Ratio: %f\n", (float)newRatio);
+		printf("New ratio: %f\n", (float)newRatio);
 #endif
 
 		if (newRatio < ratio)
@@ -678,7 +699,7 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 			if (ratio - newRatio < bestRatioDiff)
 			{
 				bestRatioDiff = ratio - newRatio;
-				bestWidth = actualWidth;
+				bestWidth = std::max(desiredWidth, actualWidth);
 			}
 
 			if (min >= actualWidth)
@@ -692,19 +713,19 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 			if (newRatio - ratio < bestRatioDiff)
 			{
 				bestRatioDiff = newRatio - ratio;
-				bestWidth = actualWidth;
+				bestWidth = std::max(desiredWidth, actualWidth);
 			}
 
 			if (max == actualWidth)
 				break;
-			max = actualWidth;
+			max = std::max(desiredWidth, actualWidth);
 		}
 		else
 		{
 			UnwrapRecursive_Wrapped(didwrap, windows);
 
 			bestRatioDiff = ratio - newRatio;
-			bestWidth = actualWidth;
+			max = std::max(desiredWidth, actualWidth);
 			break;
 		}
 
@@ -717,14 +738,8 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 #if WRAPDEBUG > 0
 		printf("Performing final wrap with bestwidth %d\n", bestWidth);
 #endif
-#ifdef __WXMAC__
-			const int offset = 6;
-#elif defined(__WXGTK__)
-			const int offset = 0;
-#else
-			const int offset = 0;
-#endif
-	for (std::vector<wxWindow*>::iterator iter = all_windows.begin(); iter != all_windows.end(); ++iter)
+
+	for (auto iter = all_windows.begin(); iter != all_windows.end(); ++iter)
 	{
 		wxSizer *pSizer = (*iter)->GetSizer();
 
@@ -735,9 +750,9 @@ bool CWrapEngine::WrapRecursive(std::vector<wxWindow*>& windows, double ratio, c
 			pSizer->Layout();
 			pSizer->Fit(*iter);
 		}
-#ifdef __WXDEBUG__
+#if WRAPDEBUG
 		size = pSizer->GetMinSize();
-		wxASSERT(size.x <= bestWidth);
+		WRAPASSERT(size.x <= bestWidth);
 #endif
 	}
 
@@ -977,7 +992,7 @@ static wxString GetLocaleFile(const wxString& localesDir, wxString name)
 			return name + _T("/LC_MESSAGES");
 	}
 
-	return _T("");
+	return wxString();
 }
 
 bool CWrapEngine::LoadCache()
@@ -1073,7 +1088,7 @@ bool CWrapEngine::LoadCache()
 
 	// Get current language
 	wxString language = wxGetApp().GetCurrentLanguageCode();
-	if (language == _T(""))
+	if (language.empty())
 		language = _T("default");
 
 	TiXmlElement* languageElement = FindElementWithAttribute(pElement, "Language", "id", language.mb_str());
@@ -1118,7 +1133,7 @@ bool CWrapEngine::LoadCache()
 	const wxString& localesDir = wxGetApp().GetLocalesDir();
 	wxString name = GetLocaleFile(localesDir, language);
 
-	if (name != _T(""))
+	if (!name.empty())
 	{
 		wxFileName fn(localesDir + name + _T("/filezilla.mo"));
 		wxDateTime date = fn.GetModificationTime();

@@ -140,7 +140,7 @@ CFileListCtrl<CSearchFileData>::CSortComparisonObject CSearchDialogFileList::Get
 wxString CSearchDialogFileList::GetItemText(int item, unsigned int column)
 {
 	if (item < 0 || item >= (int)m_indexMapping.size())
-		return _T("");
+		return wxString();
 	int index = m_indexMapping[item];
 
 	const CDirentry& entry = m_fileData[index];
@@ -151,14 +151,14 @@ wxString CSearchDialogFileList::GetItemText(int item, unsigned int column)
 	else if (column == 2)
 	{
 		if (entry.is_dir() || entry.size < 0)
-			return _T("");
+			return wxString();
 		else
 			return CSizeFormat::Format(entry.size);
 	}
 	else if (column == 3)
 	{
 		CSearchFileData& data = m_fileData[index];
-		if (data.fileType.IsEmpty())
+		if (data.fileType.empty())
 		{
 			if (data.path.GetType() == VMS)
 				data.fileType = GetType(StripVMSRevision(entry.name), entry.is_dir());
@@ -174,7 +174,7 @@ wxString CSearchDialogFileList::GetItemText(int item, unsigned int column)
 		return entry.permissions;
 	else if (column == 6)
 		return entry.ownerGroup;
-	return _T("");
+	return wxString();
 }
 
 int CSearchDialogFileList::OnGetItemImage(long item) const
@@ -244,7 +244,7 @@ bool CSearchDialog::Load()
 	m_results->SetFilelistStatusBar(pStatusBar);
 
 	const CServerPath path = m_pState->GetRemotePath();
-	if (!path.IsEmpty())
+	if (!path.empty())
 		XRCCTRL(*this, "ID_PATH", wxTextCtrl)->ChangeValue(path.GetPath());
 
 	SetCtrlState();
@@ -287,12 +287,12 @@ void CSearchDialog::Run()
 			m_pState->m_pCommandQueue->Cancel();
 			m_pState->GetRecursiveOperationHandler()->StopRecursiveOperation();
 		}
-		if (!m_original_dir.IsEmpty())
+		if (!m_original_dir.empty())
 			m_pState->ChangeRemoteDir(m_original_dir);
 	}
 	else
 	{
-		if (m_pState->IsRemoteIdle() && !m_original_dir.IsEmpty())
+		if (m_pState->IsRemoteIdle() && !m_original_dir.empty())
 			m_pState->ChangeRemoteDir(m_original_dir);
 	}
 }
@@ -311,7 +311,7 @@ void CSearchDialog::OnStateChange(CState* pState, enum t_statechange_notificatio
 
 void CSearchDialog::ProcessDirectoryListing()
 {
-	CSharedPointer<const CDirectoryListing> listing = m_pState->GetRemoteDir();
+	std::shared_ptr<CDirectoryListing> listing = m_pState->GetRemoteDir();
 
 	if (!listing || listing->m_failed)
 		return;
@@ -370,7 +370,7 @@ void CSearchDialog::OnSearch(wxCommandEvent& event)
 		return;
 	}
 	path.SetType(pServer->GetType());
-	if (!path.SetPath(XRCCTRL(*this, "ID_PATH", wxTextCtrl)->GetValue()) || path.IsEmpty())
+	if (!path.SetPath(XRCCTRL(*this, "ID_PATH", wxTextCtrl)->GetValue()) || path.empty())
 	{
 		wxMessageBoxEx(_("Need to enter valid remote path"), _("Remote file search"), wxICON_EXCLAMATION);
 		return;
@@ -533,7 +533,7 @@ void CSearchDialog::ProcessSelection(std::list<int> &selected_files, std::list<C
 		{
 			CServerPath path = m_results->m_fileData[index].path;
 			path.ChangePath(m_results->m_fileData[index].name);
-			if (path.IsEmpty())
+			if (path.empty())
 				continue;
 
 			bool replaced = false;

@@ -5,11 +5,13 @@
 #include "systemimagelist.h"
 #include "listingcomparison.h"
 
+#include <memory>
+
 class CQueueView;
 class CFileListCtrl_SortComparisonObject;
 class CState;
 class CFilelistStatusBar;
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(__WXGTK3__)
 class CGtkEventCallbackProxyBase;
 #endif
 
@@ -315,9 +317,9 @@ public:
 
 		DataEntry &type1 = m_fileData[a];
 		DataEntry &type2 = m_fileData[b];
-		if (type1.fileType.IsEmpty())
+		if (type1.fileType.empty())
 			type1.fileType = m_pListView->GetType(data1.name, data1.is_dir());
-		if (type2.fileType.IsEmpty())
+		if (type2.fileType.empty())
 			type2.fileType = m_pListView->GetType(data2.name, data2.is_dir());
 
 		CMP(CmpStringNoCase, type1.fileType, type2.fileType);
@@ -536,8 +538,8 @@ private:
 	int m_pending_focus_processing;
 #endif
 
-#ifdef __WXGTK__
-	CSharedPointer<CGtkEventCallbackProxyBase> m_gtkEventCallbackProxy;
+#if defined(__WXGTK__) && !defined(__WXGTK3__)
+	std::unique_ptr<CGtkEventCallbackProxyBase> m_gtkEventCallbackProxy;
 #endif
 
 	wxString m_genericTypes[2];

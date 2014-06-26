@@ -301,12 +301,12 @@ int CSystemImageList::GetIconIndex(enum filetype type, const wxString& fileName 
 		return -1;
 
 #ifdef __WXMSW__
-	if (fileName == _T(""))
+	if (fileName.empty())
 		physical = false;
 
 	SHFILEINFO shFinfo;
 	memset(&shFinfo, 0, sizeof(SHFILEINFO));
-	if (SHGetFileInfo(fileName != _T("") ? fileName : _T("{B97D3074-1830-4b4a-9D8A-17A38B074052}"),
+	if (SHGetFileInfo(!fileName.empty() ? fileName : _T("{B97D3074-1830-4b4a-9D8A-17A38B074052}"),
 		(type != file) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL,
 		&shFinfo,
 		sizeof(SHFILEINFO),
@@ -333,18 +333,18 @@ int CSystemImageList::GetIconIndex(enum filetype type, const wxString& fileName 
 
 	wxFileName fn(fileName);
 	wxString ext = fn.GetExt();
-	if (ext == _T(""))
+	if (ext.empty())
 		return icon;
 
 	if (symlink)
 	{
-		std::map<wxString, int>::iterator cacheIter = m_iconCache.find(ext);
+		auto cacheIter = m_iconCache.find(ext);
 		if (cacheIter != m_iconCache.end())
 			return cacheIter->second;
 	}
 	else
 	{
-		std::map<wxString, int>::iterator cacheIter = m_iconSymlinkCache.find(ext);
+		auto cacheIter = m_iconSymlinkCache.find(ext);
 		if (cacheIter != m_iconSymlinkCache.end())
 			return cacheIter->second;
 	}

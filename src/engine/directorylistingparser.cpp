@@ -63,51 +63,16 @@ public:
 		return m_len;
 	}
 
-	wxString GetString(unsigned int type = 0)
+	wxString GetString()
 	{
 		if (!m_pToken)
-			return _T("");
+			return wxString();
 
-		if (type > 2)
-			return _T("");
-
-		if (!m_str[type].IsEmpty())
-			return m_str[type];
-
-		if (!type)
-		{
-			wxString str(m_pToken, m_len);
-			m_str[type] = str;
-			return str;
-		}
-		else if (type == 1)
-		{
-			if (!IsRightNumeric() || IsNumeric())
-				return _T("");
-
-			int pos = m_len - 1;
-			while (m_pToken[pos] >= '0' && m_pToken[pos] <= '9')
-				--pos;
-
-			wxString str(m_pToken, pos + 1);
-			m_str[type] = str;
-			return str;
-		}
-		else if (type == 2)
-		{
-			if (!IsLeftNumeric() || IsNumeric())
-				return _T("");
-
-			int pos = 0;
-			while (m_pToken[pos] >= '0' && m_pToken[pos] <= '9')
-				++pos;
-
-			wxString str(m_pToken + pos, m_len - pos);
-			m_str[type] = str;
-			return str;
+		if( m_str.empty() ) {
+			m_str.assign(m_pToken, m_len);
 		}
 
-		return _T("");
+		return m_str;
 	}
 
 	bool IsNumeric(t_numberBase base = decimal)
@@ -304,7 +269,7 @@ protected:
 	TokenInformation m_leftNumeric;
 	TokenInformation m_rightNumeric;
 	wxLongLong m_number;
-	wxString m_str[3];
+	wxString m_str;
 };
 
 class CLine
@@ -644,7 +609,7 @@ CDirectoryListingParser::CDirectoryListingParser(CControlSocket* pControlSocket,
 		// Some servers send a combination of month name and number,
 		// Add corresponding numbers to the month names.
 		std::map<wxString, int> combo;
-		for (std::map<wxString, int>::iterator iter = m_MonthNamesMap.begin(); iter != m_MonthNamesMap.end(); ++iter)
+		for (auto iter = m_MonthNamesMap.begin(); iter != m_MonthNamesMap.end(); ++iter)
 		{
 			// January could be 1 or 0, depends how the server counts
 			combo[wxString::Format(_T("%s%02d"), iter->first.c_str(), iter->second)] = iter->second;
@@ -688,7 +653,7 @@ CDirectoryListingParser::CDirectoryListingParser(CControlSocket* pControlSocket,
 
 CDirectoryListingParser::~CDirectoryListingParser()
 {
-	for (std::list<t_list>::iterator iter = m_DataList.begin(); iter != m_DataList.end(); ++iter)
+	for (auto iter = m_DataList.begin(); iter != m_DataList.end(); ++iter)
 		delete [] iter->p;
 
 	delete m_prevLine;
@@ -977,9 +942,16 @@ bool CDirectoryListingParser::ParseAsUnix(CLine *pLine, CDirentry &entry, bool e
 		// Append missing group to ownerGroup
 		if (!token.IsNumeric() && token.IsRightNumeric())
 		{
-			if (!entry.ownerGroup.IsEmpty())
+			if (!entry.ownerGroup.empty())
 				entry.ownerGroup += _T(" ");
-			entry.ownerGroup += token.GetString(1);
+
+			wxString const group = token.GetString();
+			int i;
+			for( i = group.size() - 1;
+				 i >= 0 && group[i] >= '0' && group[i] <= '9';
+				 --i ) {}
+
+			entry.ownerGroup += group.Left(i + 1);
 		}
 
 		if (expect_date)
@@ -1466,9 +1438,9 @@ bool CDirectoryListingParser::ParseAsDos(CLine *pLine, CDirentry &entry)
 		return false;
 	entry.name = token.GetString();
 
-	entry.target = _T("");
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.target.clear();
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.time += m_timezoneOffset;
 
 	return true;
@@ -1542,8 +1514,8 @@ bool CDirectoryListingParser::ParseAsEplf(CLine *pLine, CDirentry &entry)
 	entry.name = token.GetString().Mid(pos + 1);
 
 	entry.flags = 0;
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.size = -1;
 
 	int fact = 1;
@@ -1633,7 +1605,7 @@ bool CDirectoryListingParser::ParseAsVms(CLine *pLine, CDirentry &entry)
 	if (!pLine->GetToken(++index, token))
 		return false;
 
-	entry.ownerGroup = _T("");
+	entry.ownerGroup.clear();
 
 	// This field can either be the filesize, a username (at least that's what I think) enclosed in [] or a date.
 	if (!token.IsNumeric() && !token.IsLeftNumeric())
@@ -1736,25 +1708,25 @@ bool CDirectoryListingParser::ParseAsVms(CLine *pLine, CDirentry &entry)
 	}
 
 	// Owner / group and permissions
-	entry.permissions = _T("");
+	entry.permissions.clear();
 	while (pLine->GetToken(++index, token))
 	{
 		const int len = token.GetLength();
 		if (len > 2 && token[0] == '(' && token[len - 1] == ')')
 		{
-			if (!entry.permissions.IsEmpty())
+			if (!entry.permissions.empty())
 				entry.permissions += _T(" ");
 			entry.permissions += token.GetString().Mid(1, len - 2);
 		}
 		else if (len > 2 && token[0] == '[' && token[len - 1] == ']')
 		{
-			if (!entry.ownerGroup.IsEmpty())
+			if (!entry.ownerGroup.empty())
 				entry.ownerGroup += _T(" ");
 			entry.ownerGroup += token.GetString().Mid(1, len - 2);
 		}
 		else
 		{
-			if (!entry.permissions.IsEmpty())
+			if (!entry.permissions.empty())
 				entry.permissions += _T(" ");
 			entry.ownerGroup += token.GetString();
 		}
@@ -1838,8 +1810,7 @@ bool CDirectoryListingParser::ParseOther(CLine *pLine, CDirentry &entry)
 
 	// If token is a number, than it's the numerical Unix style format,
 	// else it's the VShell, OS/2 or nortel.VxWorks format
-	if (token.IsNumeric())
-	{
+	if (token.IsNumeric()) {
 		entry.permissions = firstToken.GetString();
 		if (firstToken.GetLength() >= 2 && firstToken[1] == '4')
 			entry.flags |= CDirentry::flag_dir;
@@ -1874,11 +1845,9 @@ bool CDirectoryListingParser::ParseOther(CLine *pLine, CDirentry &entry)
 			return false;
 
 		entry.name = token.GetString();
-
-		entry.target = _T("");
+		entry.target.clear();
 	}
-	else
-	{
+	else {
 		// Possible conflict with multiline VMS listings
 		if (m_maybeMultilineVms)
 			return false;
@@ -1980,9 +1949,9 @@ bool CDirectoryListingParser::ParseOther(CLine *pLine, CDirentry &entry)
 				entry.name.RemoveLast();
 			}
 		}
-		entry.target = _T("");
-		entry.ownerGroup = _T("");
-		entry.permissions = _T("");
+		entry.target.clear();
+		entry.ownerGroup.clear();
+		entry.permissions.clear();
 		entry.time += m_timezoneOffset;
 	}
 
@@ -2035,7 +2004,7 @@ CLine *CDirectoryListingParser::GetLine(bool breakAtEnd /*=false*/, bool &error)
 	while (!m_DataList.empty())
 	{
 		// Trim empty lines and spaces
-		std::list<t_list>::iterator iter = m_DataList.begin();
+		auto iter = m_DataList.begin();
 		int len = iter->len;
 		while (iter->p[m_currentOffset]=='\r' || iter->p[m_currentOffset]=='\n' || iter->p[m_currentOffset]==' ' || iter->p[m_currentOffset]=='\t')
 		{
@@ -2107,7 +2076,7 @@ CLine *CDirectoryListingParser::GetLine(bool breakAtEnd /*=false*/, bool &error)
 		int respos = 0;
 
 		// Copy line data
-		std::list<t_list>::iterator i = m_DataList.begin();
+		auto i = m_DataList.begin();
 		while (i != iter && reslen)
 		{
 			int copylen = i->len - startpos;
@@ -2149,10 +2118,10 @@ CLine *CDirectoryListingParser::GetLine(bool breakAtEnd /*=false*/, bool &error)
 		else
 		{
 			wxString str(res, wxConvUTF8);
-			if (str.IsEmpty())
+			if (str.empty())
 			{
 				str = wxString(res, wxConvLocal);
-				if (str.IsEmpty())
+				if (str.empty())
 					str = wxString(res, wxConvISO8859_1);
 			}
 			buffer = new wxChar[str.Len() + 1];
@@ -2215,8 +2184,8 @@ bool CDirectoryListingParser::ParseAsWfFtp(CLine *pLine, CDirentry &entry)
 	if (!ParseTime(token, entry))
 		return false;
 
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.time += m_timezoneOffset;
 
 	return true;
@@ -2255,8 +2224,8 @@ bool CDirectoryListingParser::ParseAsIBM_MVS(CLine *pLine, CDirentry &entry)
 			return false;
 
 		entry.size = -1;
-		entry.ownerGroup = _T("");
-		entry.permissions = _T("");
+		entry.ownerGroup.clear();
+		entry.permissions.clear();
 
 		return true;
 	}
@@ -2316,8 +2285,8 @@ bool CDirectoryListingParser::ParseAsIBM_MVS(CLine *pLine, CDirentry &entry)
 
 	entry.name = token.GetString();
 
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 
 	return true;
 }
@@ -2379,8 +2348,8 @@ bool CDirectoryListingParser::ParseAsIBM_MVS_PDS(CLine *pLine, CDirentry &entry)
 	if (!pLine->GetToken(index++, token, true))
 		return false;
 
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.time += m_timezoneOffset;
 
 	return true;
@@ -2405,8 +2374,8 @@ bool CDirectoryListingParser::ParseAsIBM_MVS_Migrated(CLine *pLine, CDirentry &e
 	entry.name = token.GetString();
 
 	entry.flags = 0;
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.size = -1;
 
 	if (pLine->GetToken(++index, token))
@@ -2425,8 +2394,8 @@ bool CDirectoryListingParser::ParseAsIBM_MVS_PDS2(CLine *pLine, CDirentry &entry
 	entry.name = token.GetString();
 
 	entry.flags = 0;
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.size = -1;
 
 	if (!pLine->GetToken(++index, token))
@@ -2499,8 +2468,8 @@ bool CDirectoryListingParser::ParseAsIBM_MVS_Tape(CLine *pLine, CDirentry &entry
 
 	entry.name = token.GetString();
 	entry.flags = 0;
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 	entry.size = -1;
 
 	if (pLine->GetToken(index++, token))
@@ -2612,17 +2581,17 @@ int CDirectoryListingParser::ParseAsMlsd(CLine *pLine, CDirentry &entry)
 		return 0;
 
 	wxString facts = token.GetString();
-	if (facts.IsEmpty())
+	if (facts.empty())
 		return 0;
 
 	entry.flags = 0;
 	entry.size = -1;
-	entry.ownerGroup = _T("");
-	entry.permissions = _T("");
+	entry.ownerGroup.clear();
+	entry.permissions.clear();
 
 	wxString owner, group, uid, gid;
 
-	while (!facts.IsEmpty())
+	while (!facts.empty())
 	{
 		int delim = facts.Find(';');
 		if (delim < 3)
@@ -2810,7 +2779,7 @@ bool CDirectoryListingParser::ParseAsOS9(CLine *pLine, CDirentry &entry)
 
 void CDirectoryListingParser::Reset()
 {
-	for (std::list<t_list>::iterator iter = m_DataList.begin(); iter != m_DataList.end(); ++iter)
+	for (auto iter = m_DataList.begin(); iter != m_DataList.end(); ++iter)
 		delete [] iter->p;
 	m_DataList.clear();
 
@@ -2898,8 +2867,8 @@ bool CDirectoryListingParser::ParseAsZVM(CLine* pLine, CDirentry &entry)
 	if (pLine->GetToken(++index, token))
 		return false;
 
-	entry.permissions = _T("");
-	entry.target = _T("");
+	entry.permissions.clear();
+	entry.target.clear();
 	entry.time += m_timezoneOffset;
 
 	return true;
@@ -2971,7 +2940,7 @@ bool CDirectoryListingParser::ParseAsHPNonstop(CLine *pLine, CDirentry &entry)
 
 bool CDirectoryListingParser::GetMonthFromName(const wxString& name, int &month)
 {
-	std::map<wxString, int>::iterator iter = m_MonthNamesMap.find(name.Lower());
+	auto iter = m_MonthNamesMap.find(name.Lower());
 	if (iter == m_MonthNamesMap.end())
 	{
 		wxString lower(name);
@@ -3070,7 +3039,7 @@ void CDirectoryListingParser::DeduceEncoding()
 	{
 		m_pControlSocket->LogMessage(::Status, _("Received a directory listing which appears to be encoded in EBCDIC."));
 		m_listingEncoding = listingEncoding::ebcdic;
-		for (std::list<t_list>::iterator it = m_DataList.begin(); it != m_DataList.end(); ++it)
+		for (auto it = m_DataList.begin(); it != m_DataList.end(); ++it)
 			ConvertEncoding(it->p, it->len);
 	}
 	else

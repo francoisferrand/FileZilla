@@ -129,7 +129,7 @@ CSocketEventDispatcher::CSocketEventDispatcher()
 
 CSocketEventDispatcher::~CSocketEventDispatcher()
 {
-	for (std::list<CSocketEvent*>::iterator iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
+	for (auto iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
 		delete *iter;
 }
 
@@ -158,7 +158,7 @@ void CSocketEventDispatcher::RemovePending(const CSocketEventHandler* pHandler)
 	wxCriticalSectionLocker lock(m_sync);
 
 	std::list<CSocketEvent*> keep;
-	for (std::list<CSocketEvent*>::iterator iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
+	for (auto iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
 	{
 		if ((*iter)->GetSocketEventHandler() != pHandler)
 		{
@@ -176,7 +176,7 @@ void CSocketEventDispatcher::RemovePending(const CSocketEventSource* pSource)
 	wxCriticalSectionLocker lock(m_sync);
 
 	std::list<CSocketEvent*> keep;
-	for (std::list<CSocketEvent*>::iterator iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
+	for (auto iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
 	{
 		if ((*iter)->GetSocketEventSource() != pSource)
 		{
@@ -193,7 +193,7 @@ void CSocketEventDispatcher::UpdatePending(const CSocketEventHandler* pOldHandle
 {
 	wxCriticalSectionLocker lock(m_sync);
 
-	for (std::list<CSocketEvent*>::iterator iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
+	for (auto iter = m_pending_events.begin(); iter != m_pending_events.end(); ++iter)
 	{
 		CSocketEvent* evt = *iter;
 		if (evt->GetSocketEventSource() != pOldSource || evt->GetSocketEventHandler() != pOldHandler)
@@ -255,7 +255,7 @@ CSocketEvent::~CSocketEvent()
 wxString CSocketEvent::GetData() const
 {
 	if (!m_data)
-		return wxEmptyString;
+		return wxString();
 
 	return m_data;
 }
@@ -1478,7 +1478,7 @@ wxString CSocket::AddressToString(const struct sockaddr* addr, int addr_len, boo
 
 	int res = getnameinfo(addr, addr_len, hostbuf, NI_MAXHOST, portbuf, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV);
 	if (res) // Should never fail
-		return _T("");
+		return wxString();
 
 	wxString host = wxString(hostbuf, wxConvLibc);
 	wxString port = wxString(portbuf, wxConvLibc);
@@ -1509,7 +1509,7 @@ wxString CSocket::GetLocalIP(bool strip_zone_index /*=false*/) const
 	socklen_t addr_len = sizeof(addr);
 	int res = getsockname(m_fd, (sockaddr*)&addr, &addr_len);
 	if (res)
-		return _T("");
+		return wxString();
 
 	return AddressToString((sockaddr *)&addr, addr_len, false, strip_zone_index);
 }
@@ -1520,7 +1520,7 @@ wxString CSocket::GetPeerIP(bool strip_zone_index /*=false*/) const
 	socklen_t addr_len = sizeof(addr);
 	int res = getpeername(m_fd, (sockaddr*)&addr, &addr_len);
 	if (res)
-		return _T("");
+		return wxString();
 
 	return AddressToString((sockaddr *)&addr, addr_len, false, strip_zone_index);
 }

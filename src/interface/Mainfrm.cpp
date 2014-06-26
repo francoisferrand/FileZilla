@@ -199,7 +199,7 @@ protected:
 				else
 				{
 					m_pMainFrame->SetTitle(pState->GetTitle() + _T(" - FileZilla"));
-					if (pServer->GetName() == _T(""))
+					if (pServer->GetName().empty())
 					{
 						// Can only happen through quickconnect bar
 						CMenuBar* pMenuBar = wxDynamicCast(m_pMainFrame->GetMenuBar(), CMenuBar);
@@ -620,11 +620,8 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 		wizard.Run();
 	}
 	// Debug menu
-	else if (event.GetId() == XRCID("ID_CRASH"))
-	{
-		// Cause a crash
-		int *x = 0;
-		*x = 0;
+	else if (event.GetId() == XRCID("ID_CRASH")) {
+		abort();
 	}
 	else if (event.GetId() == XRCID("ID_CIPHERS"))
 	{
@@ -689,7 +686,7 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 		{
 			CState* pState = *iter;
 			CServerPath path = pState->GetRemotePath();
-			if (!path.IsEmpty() && pState->m_pCommandQueue)
+			if (!path.empty() && pState->m_pCommandQueue)
 				pState->ChangeRemoteDir(path, _T(""), LIST_FLAG_REFRESH);
 		}
 	}
@@ -977,16 +974,15 @@ void CMainFrame::OnEngineEvent(wxEvent &event)
 			{
 				const CDirectoryListingNotification* const pListingNotification = reinterpret_cast<CDirectoryListingNotification *>(pNotification);
 
-				if (pListingNotification->GetPath().IsEmpty())
+				if (pListingNotification->GetPath().empty())
 					pState->SetRemoteDir(0, false);
 				else
 				{
-					CDirectoryListing* pListing = new CDirectoryListing;
+					std::shared_ptr<CDirectoryListing> pListing = std::make_shared<CDirectoryListing>();
 					if (pListingNotification->Failed() ||
 						pState->m_pEngine->CacheLookup(pListingNotification->GetPath(), *pListing) != FZ_REPLY_OK)
 					{
-						delete pListing;
-						pListing = new CDirectoryListing;
+						pListing = std::make_shared<CDirectoryListing>();
 						pListing->path = pListingNotification->GetPath();
 						pListing->m_failed = true;
 						pListing->m_firstListTime = CMonotonicTime::Now();
@@ -1443,7 +1439,7 @@ void CMainFrame::OpenSiteManager(const CServer* pServer /*=0*/)
 			continue;
 
 		const wxString& path = controls->site_bookmarks->path;
-		if (path == _T(""))
+		if (path.empty())
 			continue;
 		if (handled_paths.find(path) != handled_paths.end())
 			continue;
@@ -2098,7 +2094,7 @@ bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site* const pData, bool newT
 	wxASSERT(pData);
 
 	if (pData->m_server.GetLogonType() == ASK ||
-		(pData->m_server.GetLogonType() == INTERACTIVE && pData->m_server.GetUser() == _T("")))
+		(pData->m_server.GetLogonType() == INTERACTIVE && pData->m_server.GetUser().empty()))
 	{
 		if (!CLoginManager::Get().GetPassword(pData->m_server, false, pData->m_server.GetName()))
 			return false;
@@ -2110,13 +2106,13 @@ bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site* const pData, bool newT
 	if (!ConnectToServer(pData->m_server, pData->m_remoteDir))
 		return false;
 
-	if (pData->m_localDir != _T("")) {
+	if (!pData->m_localDir.empty()) {
 		CState *pState = CContextManager::Get()->GetCurrentContext();
 		if( pState ) {
 			bool set = pState->SetLocalDir(pData->m_localDir, 0, false);
 
 			if (set && pData->m_sync) {
-				wxASSERT(!pData->m_remoteDir.IsEmpty());
+				wxASSERT(!pData->m_remoteDir.empty());
 				pState->SetSyncBrowse(true, pData->m_remoteDir);
 			}
 		}
@@ -2522,12 +2518,10 @@ void CMainFrame::OnDropdownComparisonHide(wxCommandEvent& event)
 		return;
 
 	bool old_mode = COptions::Get()->GetOptionVal(OPTION_COMPARE_HIDEIDENTICAL) != 0;
-	bool new_mode = event.IsChecked();
-
-	COptions::Get()->SetOption(OPTION_COMPARE_HIDEIDENTICAL, new_mode ? 1 : 0);
+	COptions::Get()->SetOption(OPTION_COMPARE_HIDEIDENTICAL, old_mode ? 0 : 1);
 
 	CComparisonManager* pComparisonManager = pState->GetComparisonManager();
-	if (old_mode != new_mode && pComparisonManager && pComparisonManager->IsComparing())
+	if (pComparisonManager && pComparisonManager->IsComparing())
 		pComparisonManager->CompareListings();
 }
 
@@ -2575,7 +2569,7 @@ void CMainFrame::ProcessCommandLine()
 	}
 
 	wxString param = pCommandLine->GetParameter();
-	if (param != _T(""))
+	if (!param.empty())
 	{
 		wxString error;
 
@@ -2596,7 +2590,7 @@ void CMainFrame::ProcessCommandLine()
 		}
 
 		if (server.GetLogonType() == ASK ||
-			(server.GetLogonType() == INTERACTIVE && server.GetUser() == _T("")))
+			(server.GetLogonType() == INTERACTIVE && server.GetUser().empty()))
 		{
 			if (!CLoginManager::Get().GetPassword(server, false))
 				return;
@@ -2683,6 +2677,8 @@ void CMainFrame::OnIconize(wxIconizeEvent& event)
 #ifdef __WXGTK__
 	if (m_taskbar_is_uniconizing)
 		return;
+	if (m_taskBarIcon && m_taskBarIcon->IsIconInstalled()) // Only way to uniconize is via the taskbar icon.
+		return;
 #endif
 	if (!event.IsIconized())
 	{
@@ -2695,7 +2691,6 @@ void CMainFrame::OnIconize(wxIconizeEvent& event)
 
 		return;
 	}
-
 
 	if (!COptions::Get()->GetOptionVal(OPTION_MINIMIZE_TRAY))
 		return;
@@ -2803,9 +2798,8 @@ void CMainFrame::SetBookmarksFromPath(const wxString& path)
 	if (!m_pContextControl)
 		return;
 
-	CSharedPointer<CContextControl::_context_controls::_site_bookmarks> site_bookmarks;
-	for (int i = 0; i < m_pContextControl->GetTabCount(); i++)
-	{
+	std::shared_ptr<CContextControl::_context_controls::_site_bookmarks> site_bookmarks;
+	for (int i = 0; i < m_pContextControl->GetTabCount(); i++) {
 		CContextControl::_context_controls *controls = m_pContextControl->GetControlsFromTabIndex(i);
 		if (i == m_pContextControl->GetCurrentTab())
 			continue;
@@ -2815,9 +2809,8 @@ void CMainFrame::SetBookmarksFromPath(const wxString& path)
 		site_bookmarks = controls->site_bookmarks;
 		site_bookmarks->bookmarks.clear();
 	}
-	if (!site_bookmarks)
-	{
-		site_bookmarks = new CContextControl::_context_controls::_site_bookmarks;
+	if (!site_bookmarks) {
+		site_bookmarks = std::make_shared<CContextControl::_context_controls::_site_bookmarks>();
 		site_bookmarks->path = path;
 	}
 
@@ -2871,7 +2864,7 @@ bool CMainFrame::ConnectToServer(const CServer &server, const CServerPath &path 
 
 	CContextControl::_context_controls* controls = m_pContextControl->GetControlsFromState(pState);
 	if (!isReconnect && controls)
-		controls->site_bookmarks.clear();
+		controls->site_bookmarks.reset();
 
 	return pState->Connect(server, path);
 }

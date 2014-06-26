@@ -1,4 +1,4 @@
-AC_INIT(FileZilla, 3.8.1, tim.kosse@filezilla-project.org)
+AC_INIT([FileZilla],[3.9.0-beta1],[tim.kosse@filezilla-project.org],[],[https://filezilla-project.org/])
 AC_CONFIG_HEADERS([src/include/config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
@@ -9,18 +9,20 @@ AC_CANONICAL_HOST
 AC_PROG_CXX
 AM_PROG_CC_C_O
 AC_PROG_INSTALL
-AC_PROG_LIBTOOL
+
+LT_INIT
+LT_LANG([C++])
 
 AC_CACHE_SAVE
 
-AC_ARG_ENABLE(locales, AC_HELP_STRING([--enable-locales], [Build message catalogs]), \
+AC_ARG_ENABLE(locales, AS_HELP_STRING([--enable-locales],[Build message catalogs]), \
         [locales="$enableval"], [locales="yes"])
 
 # Todo: Investigate using sub-configure scripts
-AC_ARG_ENABLE(localesonly, AC_HELP_STRING([--enable-localesonly], [Just build locales]), \
+AC_ARG_ENABLE(localesonly, AS_HELP_STRING([--enable-localesonly],[Just build locales]), \
         [localesonly="$enableval"], [localesonly="no"])
 
-AC_ARG_ENABLE(shellextonly, AC_HELP_STRING([--enable-shellextonly], [Just build Explorer shell extension (MSW specific flag)]), \
+AC_ARG_ENABLE(shellextonly, AS_HELP_STRING([--enable-shellextonly],[Just build Explorer shell extension (MSW specific flag)]), \
         [shellextonly="$enableval"], [shellextonly="no"])
 
 if test "$locales" != "yes" -a "$localesonly" = "yes"; then
@@ -48,6 +50,9 @@ if ! test "$localesonly" = "yes"; then
     CXXFLAGS="$CXXFLAGS -Wall -g -fexceptions"
   fi
 
+  # Check for C++11 support
+  AX_CXX_COMPILE_STDCXX_11([],[mandatory])
+  CHECK_LIBCXX
   CHECK_CXX11
 
   # Add build information to config.h
@@ -67,7 +72,7 @@ if ! test "$localesonly" = "yes"; then
   fi
 
   # Get buildtype.
-  AC_ARG_ENABLE(buildtype, AC_HELP_STRING([--enable-buildtype=TYPE], [DO NOT USE. Reserved for use by official maintainer. TYPE can either be 'official' or 'nightly'.]),
+  AC_ARG_ENABLE(buildtype, AS_HELP_STRING([--enable-buildtype=TYPE],[DO NOT USE. Reserved for use by official maintainer. TYPE can either be 'official' or 'nightly'.]),
     [buildtype=$enableval], [buildtype=])
   buildtype_valid=false
   if test -z "$buildtype"; then
@@ -192,13 +197,8 @@ if test "$buildmain" = "yes" -o "$shellextonly" = "yes"; then
   AC_MSG_CHECKING([whether to use windres])
   if echo $host_os | grep "cygwin\|mingw" > /dev/null 2>&1; then
     if echo $WX_CPPFLAGS | grep __WXMSW__ > /dev/null 2>&1; then
-      if test -z "$host_alias"; then
-        hostaliaswindres=
-      else
-        hostaliaswindres="$host_alias-windres"
-      fi
       AC_MSG_RESULT([yes])
-      AC_PATH_PROGS([WINDRES], [windres $hostaliaswindres $host_os-windres])
+      AC_CHECK_TOOL([WINDRES], [windres])
       if test "x$WINDRES" = "x"; then
         AC_MSG_ERROR([windres could not be found, please make sure this program is within your path.])
       fi
@@ -287,7 +287,7 @@ if test "$buildmain" = "yes"; then
     ])
 
     AC_ARG_WITH(idn-lib,
-        AC_HELP_STRING([--with-idn-lib=FILE], [Use the given path to the idn library.]),
+        AS_HELP_STRING([--with-idn-lib=FILE],[Use the given path to the idn library.]),
     [
       if test "$withval" != "yes" -a "$withval" != ""; then
           IDN_LIB=$withval
@@ -324,7 +324,7 @@ if test "$buildmain" = "yes"; then
 
   AC_MSG_CHECKING([whether to use precompiled headers])
   use_precomp=""
-  AC_ARG_ENABLE(precomp, AC_HELP_STRING([--enable-precomp], [Use precompiled headers]), \
+  AC_ARG_ENABLE(precomp, AS_HELP_STRING([--enable-precomp],[Use precompiled headers]), \
                 use_precomp="$enableval")
   if test "x$enable_dependency_tracking" = "xno"; then
     use_precomp="no"
@@ -363,7 +363,7 @@ if test "$buildmain" = "yes"; then
   # Updatecheck related flags
   # -------------------------
 
-  AC_ARG_ENABLE(manualupdatecheck, AC_HELP_STRING([--disable-manualupdatecheck], [Disallow the user to manually check for new versions. Implies --disable-autoupdatecheck]),
+  AC_ARG_ENABLE(manualupdatecheck, AS_HELP_STRING([--disable-manualupdatecheck],[Disallow the user to manually check for new versions. Implies --disable-autoupdatecheck]),
     [manualupdatecheck=$enableval], [manualupdatecheck="yes"])
 
   if test "$manualupdatecheck" = "no"; then
@@ -373,7 +373,7 @@ if test "$buildmain" = "yes"; then
   fi
   AC_DEFINE_UNQUOTED(FZ_MANUALUPDATECHECK, $manualupdatecheck, [Set to 1 to enable user initiated update checks])
 
-  AC_ARG_ENABLE(autoupdatecheck, AC_HELP_STRING([--disable-autoupdatecheck], [Disables the ability of FileZilla to check for new versions automatically.]),
+  AC_ARG_ENABLE(autoupdatecheck, AS_HELP_STRING([--disable-autoupdatecheck],[Disables the ability of FileZilla to check for new versions automatically.]),
     [autoupdatecheck=$enableval], [autoupdatecheck="yes"])
 
   if test "$manualupdatecheck" = "1" -a "$autoupdatecheck" != "no"; then
@@ -401,7 +401,7 @@ if test "$buildmain" = "yes"; then
   # Libdbus
   # -------
 
-  AC_ARG_WITH(dbus, AC_HELP_STRING([--with-dbus], [Enable D-Bus support through libdbus. Used for GNOME Session manager D-Bus API. Default: auto]),
+  AC_ARG_WITH(dbus, AS_HELP_STRING([--with-dbus],[Enable D-Bus support through libdbus. Used for GNOME Session manager D-Bus API. Default: auto]),
     [
     ],
     [
@@ -441,16 +441,22 @@ if test "$buildmain" = "yes"; then
   AC_MSG_RESULT([$with_dbus])
 
   # We want xdg-open on *nix
-  if echo "$WX_CPPFLAGS" | grep __WXGTK__ > /dev/null 2>&1; then
-
+  if echo "`$WX_CONFIG_WITH_ARGS --basename`" | grep -i gtk > /dev/null 2>&1; then
     AC_PATH_PROG(xdgopen, xdg-open)
     if test -z "$xdgopen"; then
       AC_MSG_ERROR([xdg-open not found. This program is the preferred way to launch the default browser. Please install the xdg-utils.])
     fi
 
-    PKG_CHECK_MODULES(LIBGTK, gtk+-2.0,, [
-      AC_MSG_ERROR([gtk+-2.0 was not found, even though the used version of wxWidgets depends on it. Are you missing the gtk+2.0 development files?])
-    ])
+    if echo "`$WX_CONFIG_WITH_ARGS --basename`" | grep -i gtk2 > /dev/null 2>&1; then
+      PKG_CHECK_MODULES(LIBGTK, gtk+-2.0,, [
+        AC_MSG_ERROR([gtk+-2.0 was not found, even though the used version of wxWidgets depends on it. Are you missing the gtk+2.0 development files?])
+      ])
+    fi
+    if echo "`$WX_CONFIG_WITH_ARGS --basename`" | grep -i gtk3 > /dev/null 2>&1; then
+      PKG_CHECK_MODULES(LIBGTK, gtk+-3.0,, [
+        AC_MSG_ERROR([gtk+-3.0 was not found, even though the used version of wxWidgets depends on it. Are you missing the gtk+3.0 development files?])
+      ])
+    fi
 
     AC_SUBST(LIBGTK_LIBS)
     AC_SUBST(LIBGTK_CFLAGS)

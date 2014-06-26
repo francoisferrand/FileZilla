@@ -8,7 +8,7 @@
 #include "conditionaldialog.h"
 #include <algorithm>
 #include "filelist_statusbar.h"
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(__WXGTK3__)
 #include <gtk/gtk.h>
 #endif
 
@@ -201,7 +201,7 @@ template<class CFileData> bool CFileListCtrl<CFileData>::MSWOnNotify(int idCtrl,
 }
 #endif
 
-#ifdef __WXGTK__
+#if defined(__WXGTK__) && !defined(__WXGTK3__)
 // Need to call a member function of a C++ template class
 // from a C function.
 // Sadly template functions with C linkage aren't possible,
@@ -272,11 +272,11 @@ template<class CFileData> CFileListCtrl<CFileData>::CFileListCtrl(wxWindow* pPar
 	m_focusItem = -1;
 #endif
 
-#ifdef __WXGTK__
-	m_gtkEventCallbackProxy = new CGtkEventCallbackProxy<CFileData>(this);
+#if defined __WXGTK__ && !defined(__WXGTK3__)
+	m_gtkEventCallbackProxy.reset(new CGtkEventCallbackProxy<CFileData>(this));
 
 	GtkWidget* widget = GetMainWindow()->GetConnectWidget();
-	g_signal_connect(widget, "button_release_event", G_CALLBACK(gtk_button_release_event), m_gtkEventCallbackProxy.Value());
+	g_signal_connect(widget, "button_release_event", G_CALLBACK(gtk_button_release_event), m_gtkEventCallbackProxy.get());
 #endif
 
 	m_genericTypes[genericTypes::file] = _("File");
@@ -510,7 +510,7 @@ template<class CFileData> wxString CFileListCtrl<CFileData>::GetType(wxString na
 
 	wxString type;
 	int flags = SHGFI_TYPENAME;
-	if (path.IsEmpty())
+	if (path.empty())
 		flags |= SHGFI_USEFILEATTRIBUTES;
 	else if (path == _T("\\"))
 		name += _T("\\");
@@ -527,7 +527,7 @@ template<class CFileData> wxString CFileListCtrl<CFileData>::GetType(wxString na
 	{
 		if (!*shFinfo.szTypeName)
 		{
-			if (!ext.IsEmpty())
+			if (!ext.empty())
 			{
 				type = ext;
 				type.MakeUpper();
@@ -540,13 +540,13 @@ template<class CFileData> wxString CFileListCtrl<CFileData>::GetType(wxString na
 		else
 		{
 			type = shFinfo.szTypeName;
-			if (!dir && !ext.IsEmpty())
+			if (!dir && !ext.empty())
 				m_fileTypeMap[ext.MakeLower()] = type;
 		}
 	}
 	else
 	{
-		if (!ext.IsEmpty())
+		if (!ext.empty())
 		{
 			type = ext;
 			type.MakeUpper();
@@ -584,7 +584,7 @@ template<class CFileData> wxString CFileListCtrl<CFileData>::GetType(wxString na
 	}
 
 	wxString desc;
-	if (pType->GetDescription(&desc) && desc != _T(""))
+	if (pType->GetDescription(&desc) && !desc.empty())
 	{
 		delete pType;
 		m_fileTypeMap[ext] = desc;

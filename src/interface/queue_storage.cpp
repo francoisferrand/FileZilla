@@ -6,17 +6,7 @@
 #include <sqlite3.h>
 #include <wx/wx.h>
 
-#if HAVE_TR1_UNORDERED_MAP
-#include <tr1/unordered_map>
-#else
 #include <unordered_map>
-#endif
-
-namespace std {
-namespace tr1 {
-}
-using namespace tr1;
-}
 
 #define INVALID_DATA -1
 
@@ -856,7 +846,7 @@ wxLongLong_t CQueueStorage::Impl::ParseServerFromRow(CServer& server)
 	server = CServer();
 
 	wxString host = GetColumnText(selectServersQuery_, server_table_column_names::host);
-	if (host == _T(""))
+	if (host.empty())
 		return INVALID_DATA;
 
 	int port = GetColumnInt(selectServersQuery_, server_table_column_names::port);
@@ -898,7 +888,7 @@ wxLongLong_t CQueueStorage::Impl::ParseServerFromRow(CServer& server)
 		if ((long)ACCOUNT == logonType)
 		{
 			wxString account = GetColumnText(selectServersQuery_, server_table_column_names::account);
-			if (account == _T(""))
+			if (account.empty())
 				return INVALID_DATA;
 			if (!server.SetAccount(account))
 				return INVALID_DATA;
@@ -983,7 +973,7 @@ wxLongLong_t CQueueStorage::Impl::ParseFileFromRow(CFileItem** pItem)
 	{
 		// QueueItemType_Folder
 		if ((download && localPath.empty()) ||
-			(!download && remotePath.IsEmpty()))
+			(!download && remotePath.empty()))
 		{
 			return INVALID_DATA;
 		}
@@ -1003,7 +993,7 @@ wxLongLong_t CQueueStorage::Impl::ParseFileFromRow(CFileItem** pItem)
 		int overwrite_action = GetColumnInt(selectFilesQuery_, file_table_column_names::default_exists_action, CFileExistsNotification::unknown);
 
 		if (sourceFile.empty() || localPath.empty() ||
-			remotePath.IsEmpty() ||
+			remotePath.empty() ||
 			size < -1 ||
 			priority < 0 || priority >= PRIORITY_COUNT ||
 			errorCount < 0)

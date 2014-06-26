@@ -940,7 +940,7 @@ bool CSiteManagerDialog::Verify()
 	if (data->m_type == CSiteManagerItemData::SITE)
 	{
 		const wxString& host = XRCCTRL(*this, "ID_HOST", wxTextCtrl)->GetValue();
-		if (host == _T(""))
+		if (host.empty())
 		{
 			XRCCTRL(*this, "ID_HOST", wxTextCtrl)->SetFocus();
 			wxMessageBoxEx(_("You have to enter a hostname."), _("Site Manager - Invalid data"), wxICON_EXCLAMATION, this);
@@ -1000,7 +1000,7 @@ bool CSiteManagerDialog::Verify()
 
 		if (XRCCTRL(*this, "ID_CHARSET_CUSTOM", wxRadioButton)->GetValue())
 		{
-			if (XRCCTRL(*this, "ID_ENCODING", wxTextCtrl)->GetValue() == _T(""))
+			if (XRCCTRL(*this, "ID_ENCODING", wxTextCtrl)->GetValue().empty())
 			{
 				XRCCTRL(*this, "ID_ENCODING", wxTextCtrl)->SetFocus();
 				wxMessageBoxEx(_("Need to specify a character encoding"), _("Site Manager - Invalid data"), wxICON_EXCLAMATION, this);
@@ -1013,7 +1013,7 @@ bool CSiteManagerDialog::Verify()
 		if (logon_type != ANONYMOUS &&
 			logon_type != ASK &&
 			logon_type != INTERACTIVE &&
-			user == _T(""))
+			user.empty())
 		{
 			XRCCTRL(*this, "ID_USER", wxTextCtrl)->SetFocus();
 			wxMessageBoxEx(_("You have to specify a user name"), _("Site Manager - Invalid data"), wxICON_EXCLAMATION, this);
@@ -1021,7 +1021,7 @@ bool CSiteManagerDialog::Verify()
 		}
 
 		// The way TinyXML handles blanks, we can't use username of only spaces
-		if (user != _T(""))
+		if (!user.empty())
 		{
 			bool space_only = true;
 			for (unsigned int i = 0; i < user.Len(); ++i)
@@ -1042,7 +1042,7 @@ bool CSiteManagerDialog::Verify()
 
 		// Require account for account logon type
 		if (logon_type == ACCOUNT &&
-			XRCCTRL(*this, "ID_ACCOUNT", wxTextCtrl)->GetValue() == _T(""))
+			XRCCTRL(*this, "ID_ACCOUNT", wxTextCtrl)->GetValue().empty())
 		{
 			XRCCTRL(*this, "ID_ACCOUNT", wxTextCtrl)->SetFocus();
 			wxMessageBoxEx(_("You have to enter an account name"), _("Site Manager - Invalid data"), wxICON_EXCLAMATION, this);
@@ -1050,7 +1050,7 @@ bool CSiteManagerDialog::Verify()
 		}
 
 		const wxString remotePathRaw = XRCCTRL(*this, "ID_REMOTEDIR", wxTextCtrl)->GetValue();
-		if (remotePathRaw != _T(""))
+		if (!remotePathRaw.empty())
 		{
 			const wxString serverType = XRCCTRL(*this, "ID_SERVERTYPE", wxChoice)->GetStringSelection();
 
@@ -1083,7 +1083,7 @@ bool CSiteManagerDialog::Verify()
 			return false;
 
 		const wxString remotePathRaw = XRCCTRL(*this, "ID_BOOKMARK_REMOTEDIR", wxTextCtrl)->GetValue();
-		if (remotePathRaw != _T(""))
+		if (!remotePathRaw.empty())
 		{
 			CServerPath remotePath;
 			remotePath.SetType(pServer->m_server.GetType());
@@ -1439,9 +1439,9 @@ bool CSiteManagerDialog::GetServer(CSiteManagerItemData_Site& data)
 		data = *pSiteData;
 		if (!pData->m_localDir.empty())
 			data.m_localDir = pData->m_localDir;
-		if (!pData->m_remoteDir.IsEmpty())
+		if (!pData->m_remoteDir.empty())
 			data.m_remoteDir = pData->m_remoteDir;
-		if (data.m_localDir.empty() || data.m_remoteDir.IsEmpty())
+		if (data.m_localDir.empty() || data.m_remoteDir.empty())
 			data.m_sync = false;
 		else
 			data.m_sync = pData->m_sync;
@@ -1804,7 +1804,7 @@ void CSiteManagerDialog::OnCopySite(wxCommandEvent& event)
 bool CSiteManagerDialog::LoadDefaultSites()
 {
 	const wxString& defaultsDir = wxGetApp().GetDefaultsDir();
-	if (defaultsDir == _T(""))
+	if (defaultsDir.empty())
 		return false;
 
 	wxFileName name(defaultsDir, _T("fzdefaults.xml"));
@@ -2036,7 +2036,7 @@ bool CSiteManagerDialog::MoveItems(wxTreeItemId source, wxTreeItemId target, boo
 		pTree->Delete(source);
 	}
 
-	for (std::list<wxTreeItemId>::iterator iter = expand.begin(); iter != expand.end(); ++iter)
+	for (auto iter = expand.begin(); iter != expand.end(); ++iter)
 		pTree->Expand(*iter);
 
 	pTree->Expand(target);
@@ -2226,11 +2226,11 @@ wxString CSiteManagerDialog::GetSitePath(wxTreeItemId item, bool stripBookmark)
 {
 	wxTreeCtrl *pTree = XRCCTRL(*this, "ID_SITETREE", wxTreeCtrl);
 	if (!pTree)
-		return _T("");
+		return wxString();
 
 	CSiteManagerItemData* pData = reinterpret_cast<CSiteManagerItemData* >(pTree->GetItemData(item));
 	if (!pData)
-		return _T("");
+		return wxString();
 
 	if (stripBookmark && pData->m_type == CSiteManagerItemData::BOOKMARK)
 		item = pTree->GetItemParent(item);
@@ -2254,11 +2254,11 @@ wxString CSiteManagerDialog::GetSitePath(bool stripBookmark)
 {
 	wxTreeCtrl *pTree = XRCCTRL(*this, "ID_SITETREE", wxTreeCtrl);
 	if (!pTree)
-		return _T("");
+		return wxString();
 
 	wxTreeItemId item = pTree->GetSelection();
 	if (!item.IsOk())
-		return _T("");
+		return wxString();
 
 	return GetSitePath(item, stripBookmark);
 }

@@ -21,7 +21,7 @@ class CFastTextCtrl : public wxTextCtrl
 {
 public:
 	CFastTextCtrl(wxWindow* parent)
-		: wxTextCtrl(parent, -1, _T(""), wxDefaultPosition, wxDefaultSize,
+		: wxTextCtrl(parent, -1, wxString(), wxDefaultPosition, wxDefaultSize,
 					 wxNO_BORDER | wxVSCROLL | wxTE_MULTILINE |
 					 wxTE_READONLY | wxTE_RICH | wxTE_RICH2 | wxTE_NOHIDESEL |
 					 wxTAB_TRAVERSAL)
@@ -78,8 +78,7 @@ public:
 #else
 	void OnKeyDown(wxKeyEvent& event)
 	{
-		if (event.GetKeyCode() != WXK_TAB)
-		{
+		if (event.GetKeyCode() != WXK_TAB) {
 			event.Skip();
 			return;
 		}
@@ -118,16 +117,15 @@ CStatusView::CStatusView(wxWindow* parent, wxWindowID id)
 #endif
 
 	m_pTextCtrl->Connect(wxID_ANY, wxEVT_CONTEXT_MENU, wxContextMenuEventHandler(CStatusView::OnContextMenu), 0, this);
+#ifdef __WXMSW__
+	::SendMessage((HWND)m_pTextCtrl->GetHandle(), EM_SETOLECALLBACK, 0, 0);
+#endif
 
 	m_nLineCount = 0;
 
 	InitDefAttr();
 
 	m_shown = IsShown();
-
-#ifdef __WXMAC__
-	m_insertionPoint = 0;
-#endif
 }
 
 CStatusView::~CStatusView()
@@ -136,8 +134,7 @@ CStatusView::~CStatusView()
 
 void CStatusView::OnSize(wxSizeEvent &event)
 {
-	if (m_pTextCtrl)
-	{
+	if (m_pTextCtrl) {
 		wxSize s = GetClientSize();
 		m_pTextCtrl->SetSize(0, 0, s.GetWidth(), s.GetHeight());
 	}
@@ -150,8 +147,7 @@ void CStatusView::AddToLog(CLogmsgNotification *pNotification)
 
 void CStatusView::AddToLog(enum MessageType messagetype, const wxString& message, const wxDateTime& time)
 {
-	if (!m_shown)
-	{
+	if (!m_shown) {
 		struct t_line line;
 		line.messagetype = messagetype;
 		line.message = message;
@@ -178,32 +174,24 @@ void CStatusView::AddToLog(enum MessageType messagetype, const wxString& message
 #ifndef __WXGTK__
 	wxWindowUpdateLocker *pLock = 0;
 #endif //__WXGTK__
-
-	if (m_nLineCount == MAX_LINECOUNT)
-	{
+	if (m_nLineCount == MAX_LINECOUNT) {
 #ifndef __WXGTK__
 		pLock = new wxWindowUpdateLocker(m_pTextCtrl);
 #endif //__WXGTK__
 		int oldLength = m_lineLengths.front();
-#ifdef __WXMAC__
-		m_insertionPoint -= oldLength + 1;
-#endif
 		m_pTextCtrl->Remove(0, oldLength + 1);
 		m_lineLengths.pop_front();
-
-#ifdef __WXMAC__
-		m_pTextCtrl->SetInsertionPoint(m_insertionPoint);
-#endif
 	}
 	else
 		m_nLineCount++;
+#ifdef __WXMAC__
+	m_pTextCtrl->SetInsertionPointEnd();
+#endif
 
 	int lineLength = m_attributeCache[messagetype].len + messageLength;
 
-	if (m_showTimestamps)
-	{
-		if (time != m_lastTime)
-		{
+	if (m_showTimestamps) {
+		if (time != m_lastTime) {
 			m_lastTime = time;
 #ifndef __WXMAC__
 			m_lastTimeString = time.Format(_T("%H:%M:%S\t"));
@@ -217,21 +205,14 @@ void CStatusView::AddToLog(enum MessageType messagetype, const wxString& message
 	}
 
 #ifdef __WXMAC__
-	int current = m_pTextCtrl->GetInsertionPoint();
-	if (current != m_insertionPoint)
-	{
-		m_pTextCtrl->SetInsertionPointEnd();
-		m_insertionPoint = m_pTextCtrl->GetInsertionPoint();
-	}
-	m_pTextCtrl->SetStyle(m_insertionPoint, m_insertionPoint, m_attributeCache[messagetype].attr);
+	m_pTextCtrl->SetDefaultStyle(m_attributeCache[messagetype].attr);
 #elif __WXGTK__
 	m_pTextCtrl->SetDefaultColor(m_attributeCache[messagetype].attr.GetTextColour());
 #endif
 
 	prefix += m_attributeCache[messagetype].prefix;
 
-	if (m_rtl)
-	{
+	if (m_rtl) {
 		// Unicode control characters that control reading direction
 		const wxChar LTR_MARK = 0x200e;
 		//const wxChar RTL_MARK = 0x200f;
@@ -241,8 +222,7 @@ void CStatusView::AddToLog(enum MessageType messagetype, const wxString& message
 		//const wxChar LTR_OVERRIDE = 0x202D;
 		//const wxChar RTL_OVERRIDE = 0x202E;
 
-		if (messagetype == Command || messagetype == Response || messagetype >= Debug_Warning)
-		{
+		if (messagetype == Command || messagetype == Response || messagetype >= Debug_Warning) {
 			// Commands, responses and debug message contain English text,
 			// set LTR reading order for them.
 			prefix += LTR_MARK;
@@ -252,7 +232,6 @@ void CStatusView::AddToLog(enum MessageType messagetype, const wxString& message
 	}
 
 	m_lineLengths.push_back(lineLength);
-
 	prefix += message;
 #if defined(__WXGTK__)
 	// AppendText always calls SetInsertionPointEnd, which is very expensive.
@@ -263,11 +242,8 @@ void CStatusView::AddToLog(enum MessageType messagetype, const wxString& message
 		m_pTextCtrl->WriteText(prefix);
 #elif defined(__WXMAC__)
 	m_pTextCtrl->WriteText(prefix);
-	m_insertionPoint += lineLength;
-	if (m_nLineCount > 1)
-		m_insertionPoint += 1;
 	delete pLock;
-#elif !defined(__WXMAC__)
+#else
 	m_pTextCtrl->AppendText(prefix, m_nLineCount, m_attributeCache[messagetype].cf);
 	delete pLock;
 #endif
@@ -283,8 +259,7 @@ void CStatusView::InitDefAttr()
 	wxClientDC dc(this);
 
 	int timestampWidth = 0;
-	if (m_showTimestamps)
-	{
+	if (m_showTimestamps) {
 		wxCoord width = 0;
 		wxCoord height = 0;
 #ifndef __WXMAC__
@@ -298,28 +273,32 @@ void CStatusView::InitDefAttr()
 	wxCoord width = 0;
 	wxCoord height = 0;
 	dc.GetTextExtent(_("Error:"), &width, &height);
-	int maxWidth = width;
+	int maxPrefixWidth = width;
 	dc.GetTextExtent(_("Command:"), &width, &height);
-	if (width > maxWidth)
-		maxWidth = width;
+	if (width > maxPrefixWidth)
+		maxPrefixWidth = width;
 	dc.GetTextExtent(_("Response:"), &width, &height);
-	if (width > maxWidth)
-		maxWidth = width;
+	if (width > maxPrefixWidth)
+		maxPrefixWidth = width;
 	dc.GetTextExtent(_("Trace:"), &width, &height);
-	if (width > maxWidth)
-		maxWidth = width;
+	if (width > maxPrefixWidth)
+		maxPrefixWidth = width;
 	dc.GetTextExtent(_("Listing:"), &width, &height);
-	if (width > maxWidth)
-		maxWidth = width;
+	if (width > maxPrefixWidth)
+		maxPrefixWidth = width;
 	dc.GetTextExtent(_("Status:"), &width, &height);
-	if (width > maxWidth)
-		maxWidth = width;
+	if (width > maxPrefixWidth)
+		maxPrefixWidth = width;
+
+#ifdef __WXMAC__
+	wxCoord spaceWidth;
+	dc.GetTextExtent(_T(" "), &spaceWidth, &height);
+#endif
 
 	dc.SetMapMode(wxMM_LOMETRIC);
 
-	maxWidth = dc.DeviceToLogicalX(maxWidth) + 20;
-	if (timestampWidth != 0)
-	{
+	int maxWidth = dc.DeviceToLogicalX(maxPrefixWidth) + 20;
+	if (timestampWidth != 0) {
 		timestampWidth = dc.DeviceToLogicalX(timestampWidth) + 20;
 		maxWidth += timestampWidth;
 	}
@@ -340,60 +319,67 @@ void CStatusView::InitDefAttr()
 	const wxColour background = wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX);
 	const bool is_dark = background.Red() + background.Green() + background.Blue() < 384;
 
-	for (int i = 0; i < MessageTypeCount; i++)
-	{
+	for (int i = 0; i < MessageTypeCount; i++) {
+		t_attributeCache& entry = m_attributeCache[i];
 #ifndef __WXMAC__
-		m_attributeCache[i].attr = defAttr;
+		entry.attr = defAttr;
 #endif
-		switch (i)
-		{
+		switch (i) {
 		case Error:
-			m_attributeCache[i].prefix = _("Error:");
-			m_attributeCache[i].attr.SetTextColour(wxColour(255, 0, 0));
+			entry.prefix = _("Error:");
+			entry.attr.SetTextColour(wxColour(255, 0, 0));
 			break;
 		case Command:
-			m_attributeCache[i].prefix = _("Command:");
+			entry.prefix = _("Command:");
 			if (is_dark)
-				m_attributeCache[i].attr.SetTextColour(wxColour(128, 128, 255));
+				entry.attr.SetTextColour(wxColour(128, 128, 255));
 			else
-				m_attributeCache[i].attr.SetTextColour(wxColour(0, 0, 128));
+				entry.attr.SetTextColour(wxColour(0, 0, 128));
 			break;
 		case Response:
-			m_attributeCache[i].prefix = _("Response:");
+			entry.prefix = _("Response:");
 			if (is_dark)
-				m_attributeCache[i].attr.SetTextColour(wxColour(128, 255, 128));
+				entry.attr.SetTextColour(wxColour(128, 255, 128));
 			else
-				m_attributeCache[i].attr.SetTextColour(wxColour(0, 128, 0));
+				entry.attr.SetTextColour(wxColour(0, 128, 0));
 			break;
 		case Debug_Warning:
 		case Debug_Info:
 		case Debug_Verbose:
 		case Debug_Debug:
-			m_attributeCache[i].prefix = _("Trace:");
+			entry.prefix = _("Trace:");
 			if (is_dark)
-				m_attributeCache[i].attr.SetTextColour(wxColour(255, 128, 255));
+				entry.attr.SetTextColour(wxColour(255, 128, 255));
 			else
-				m_attributeCache[i].attr.SetTextColour(wxColour(128, 0, 128));
+				entry.attr.SetTextColour(wxColour(128, 0, 128));
 			break;
 		case RawList:
-			m_attributeCache[i].prefix = _("Listing:");
+			entry.prefix = _("Listing:");
 			if (is_dark)
-				m_attributeCache[i].attr.SetTextColour(wxColour(128, 255, 255));
+				entry.attr.SetTextColour(wxColour(128, 255, 255));
 			else
-				m_attributeCache[i].attr.SetTextColour(wxColour(0, 128, 128));
+				entry.attr.SetTextColour(wxColour(0, 128, 128));
 			break;
 		default:
-			m_attributeCache[i].prefix = _("Status:");
-			m_attributeCache[i].attr.SetTextColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT));
+			entry.prefix = _("Status:");
+			entry.attr.SetTextColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT));
 			break;
 		}
-		m_attributeCache[i].prefix += _T("\t");
-		m_attributeCache[i].len = m_attributeCache[i].prefix.Length();
+
+#ifdef __WXMAC__
+		// Fill with blanks to approach best size
+		dc.GetTextExtent(entry.prefix, &width, &height);
+		wxASSERT(width <= maxPrefixWidth);
+		wxCoord spaces = (maxPrefixWidth - width) / spaceWidth;
+		entry.prefix += wxString(spaces, ' ');
+#endif
+		entry.prefix += _T("\t");
+		entry.len = entry.prefix.Length();
 
 #ifdef __WXMSW__
-		m_pTextCtrl->SetStyle(0, 0, m_attributeCache[i].attr);
-		m_attributeCache[i].cf.cbSize = sizeof(CHARFORMAT2);
-		::SendMessage((HWND)m_pTextCtrl->GetHWND(), EM_GETCHARFORMAT, SCF_SELECTION, (LPARAM)&m_attributeCache[i].cf);
+		m_pTextCtrl->SetStyle(0, 0, entry.attr);
+		entry.cf.cbSize = sizeof(CHARFORMAT2);
+		::SendMessage((HWND)m_pTextCtrl->GetHWND(), EM_GETCHARFORMAT, SCF_SELECTION, (LPARAM)&entry.cf);
 #endif
 	}
 
@@ -416,10 +402,6 @@ void CStatusView::OnClear(wxCommandEvent& event)
 		m_pTextCtrl->Clear();
 	m_nLineCount = 0;
 	m_lineLengths.clear();
-
-#ifdef __WXMAC__
-	m_insertionPoint = 0;
-#endif
 }
 
 void CStatusView::OnCopy(wxCommandEvent& event)
@@ -431,8 +413,7 @@ void CStatusView::OnCopy(wxCommandEvent& event)
 	m_pTextCtrl->GetSelection(&from, &to);
 	if (from != to)
 		m_pTextCtrl->Copy();
-	else
-	{
+	else {
 		m_pTextCtrl->Freeze();
 		m_pTextCtrl->SetSelection(-1, -1);
 		m_pTextCtrl->Copy();
@@ -450,19 +431,16 @@ bool CStatusView::Show(bool show /*=true*/)
 {
 	m_shown = show;
 
-	if (show)
-	{
-		if (m_hiddenLines.size() == MAX_LINECOUNT)
-		{
+	if (show) {
+		if (m_hiddenLines.size() == MAX_LINECOUNT) {
 			if (m_pTextCtrl)
 				m_pTextCtrl->Clear();
 			m_nLineCount = 0;
 			m_lineLengths.clear();
 		}
 
-		for (std::list<t_line>::const_iterator iter = m_hiddenLines.begin(); iter != m_hiddenLines.end(); ++iter)
-		{
-			AddToLog(iter->messagetype, iter->message, iter->time);
+		for (auto const& line : m_hiddenLines) {
+			AddToLog(line.messagetype, line.message, line.time);
 		}
 		m_hiddenLines.clear();
 	}

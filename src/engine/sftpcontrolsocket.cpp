@@ -64,7 +64,7 @@ public:
 	virtual ~CSftpInputThread()
 	{
 		m_criticalSection.Enter();
-		for (std::list<sftp_message*>::iterator iter = m_sftpMessages.begin(); iter != m_sftpMessages.end(); ++iter)
+		for (auto iter = m_sftpMessages.begin(); iter != m_sftpMessages.end(); ++iter)
 			delete *iter;
 		m_criticalSection.Leave();
 	}
@@ -155,7 +155,7 @@ protected:
 				else
 					m_pOwner->LogMessage(Debug_Warning, _T("Uknown input stream error"));
 				error = true;
-				return _T("");
+				return wxString();
 			}
 
 			if (c == '\n')
@@ -173,7 +173,7 @@ protected:
 		{
 			m_pOwner->LogMessage(Debug_Warning, _T("Unexpected EOF."));
 			error = true;
-			return _T("");
+			return wxString();
 		}
 
 		if (read && buffer[read - 1] == '\r')
@@ -182,7 +182,7 @@ protected:
 		buffer[read] = 0;
 
 		const wxString line = m_pOwner->ConvToLocal(buffer);
-		if (read && line == _T(""))
+		if (read && line.empty())
 		{
 			m_pOwner->LogMessage(::Error, _T("Failed to convert reply to local character set."));
 			error = true;
@@ -429,7 +429,7 @@ int CSftpControlSocket::Connect(const CServer &server)
 	CRateLimiter::Get()->AddObject(this);
 
 	wxString executable = m_pEngine->GetOptions()->GetOption(OPTION_FZSFTP_EXECUTABLE);
-	if (executable == _T(""))
+	if (executable.empty())
 		executable = _T("fzsftp");
 	LogMessage(Debug_Verbose, _T("Going to execute %s"), executable.c_str());
 
@@ -562,13 +562,13 @@ int CSftpControlSocket::ConnectSend()
 											m_pEngine->GetOptions()->GetOption(OPTION_PROXY_HOST).c_str(),
 											m_pEngine->GetOptions()->GetOptionVal(OPTION_PROXY_PORT));
 			wxString user = m_pEngine->GetOptions()->GetOption(OPTION_PROXY_USER);
-			if (user != _T(""))
+			if (!user.empty())
 				cmd += _T(" \"") + user + _T("\"");
 
 			wxString show = cmd;
 
 			wxString pass = m_pEngine->GetOptions()->GetOption(OPTION_PROXY_PASS);
-			if (pass != _T(""))
+			if (!pass.empty())
 			{
 				cmd += _T(" \"") + pass + _T("\"");
 				show += _T(" \"") + wxString('*', pass.Len()) + _T("\"");
@@ -604,7 +604,7 @@ void CSftpControlSocket::OnSftpEvent(wxCommandEvent&)
 
 	std::list<sftp_message*> messages;
 	m_pInputThread->GetMessages(messages);
-	for (std::list<sftp_message*>::iterator iter = messages.begin(); iter != messages.end(); ++iter)
+	for (auto iter = messages.begin(); iter != messages.end(); ++iter)
 	{
 		if (!m_pInputThread)
 		{
@@ -653,9 +653,9 @@ void CSftpControlSocket::OnSftpEvent(wxCommandEvent&)
 				if (m_pCurrentServer->GetLogonType() == INTERACTIVE)
 				{
 					wxString challenge;
-					if (m_requestPreamble != _T(""))
+					if (!m_requestPreamble.empty())
 						challenge += m_requestPreamble + _T("\n");
-					if (m_requestInstruction != _T(""))
+					if (!m_requestInstruction.empty())
 						challenge += m_requestInstruction + _T("\n");
 					if (message->text != _T("Password:"))
 						challenge += message->text;
@@ -981,7 +981,7 @@ int CSftpControlSocket::List(CServerPath path /*=CServerPath()*/, wxString subDi
 	pData->path = path;
 	pData->subDir = subDir;
 	pData->refresh = (flags & LIST_FLAG_REFRESH) != 0;
-	pData->fallback_to_current = !path.IsEmpty() && (flags & LIST_FLAG_FALLBACK_CURRENT) != 0;
+	pData->fallback_to_current = !path.empty() && (flags & LIST_FLAG_FALLBACK_CURRENT) != 0;
 
 	int res = ChangeDir(path, subDir, (flags & LIST_FLAG_LINK) != 0);
 	if (res != FZ_REPLY_OK)
@@ -1040,7 +1040,7 @@ int CSftpControlSocket::ListParseResponse(bool successful, const wxString& reply
 	}
 	else if (pData->opState == list_mtime)
 	{
-		if (successful && reply != _T(""))
+		if (successful && !reply.empty())
 		{
 			time_t seconds = 0;
 			bool parsed = true;
@@ -1192,7 +1192,7 @@ int CSftpControlSocket::ListSubcommandResult(int prevResult)
 		{
 			// List current directory instead
 			pData->fallback_to_current = false;
-			pData->path.Clear();
+			pData->path.clear();
 			pData->subDir = _T("");
 			int res = ChangeDir();
 			if (res != FZ_REPLY_OK)
@@ -1205,7 +1205,7 @@ int CSftpControlSocket::ListSubcommandResult(int prevResult)
 		}
 	}
 
-	if (pData->path.IsEmpty())
+	if (pData->path.empty())
 		pData->path = m_CurrentPath;
 
 	if (!pData->refresh)
@@ -1301,21 +1301,21 @@ int CSftpControlSocket::ChangeDir(CServerPath path /*=CServerPath()*/, wxString 
 		path.SetType(m_pCurrentServer->GetType());
 
 	CServerPath target;
-	if (path.IsEmpty())
+	if (path.empty())
 	{
-		if (m_CurrentPath.IsEmpty())
+		if (m_CurrentPath.empty())
 			state = cwd_pwd;
 		else
 			return FZ_REPLY_OK;
 	}
 	else
 	{
-		if (subDir != _T(""))
+		if (!subDir.empty())
 		{
 			// Check if the target is in cache already
 			CPathCache cache;
 			target = cache.Lookup(*m_pCurrentServer, path, subDir);
-			if (!target.IsEmpty())
+			if (!target.empty())
 			{
 				if (m_CurrentPath == target)
 					return FZ_REPLY_OK;
@@ -1328,9 +1328,9 @@ int CSftpControlSocket::ChangeDir(CServerPath path /*=CServerPath()*/, wxString 
 			{
 				// Target unknown, check for the parent's target
 				target = cache.Lookup(*m_pCurrentServer, path, _T(""));
-				if (m_CurrentPath == path || (!target.IsEmpty() && target == m_CurrentPath))
+				if (m_CurrentPath == path || (!target.empty() && target == m_CurrentPath))
 				{
-					target.Clear();
+					target.clear();
 					state = cwd_cwd_subdir;
 				}
 				else
@@ -1341,7 +1341,7 @@ int CSftpControlSocket::ChangeDir(CServerPath path /*=CServerPath()*/, wxString 
 		{
 			CPathCache cache;
 			target = cache.Lookup(*m_pCurrentServer, path, _T(""));
-			if (m_CurrentPath == path || (!target.IsEmpty() && target == m_CurrentPath))
+			if (m_CurrentPath == path || (!target.empty() && target == m_CurrentPath))
 				return FZ_REPLY_OK;
 			state = cwd_cwd;
 		}
@@ -1359,7 +1359,7 @@ int CSftpControlSocket::ChangeDir(CServerPath path /*=CServerPath()*/, wxString 
 		!static_cast<CSftpFileTransferOpData *>(pData->pNextOpData)->download)
 	{
 		pData->tryMkdOnFail = true;
-		wxASSERT(subDir == _T(""));
+		wxASSERT(subDir.empty());
 	}
 
 	m_pCurOpData = pData;
@@ -1380,7 +1380,7 @@ int CSftpControlSocket::ChangeDirParseResponse(bool successful, const wxString& 
 	switch (pData->opState)
 	{
 	case cwd_pwd:
-		if (!successful || reply == _T(""))
+		if (!successful || reply.empty())
 			error = true;
 		if (ParsePwdReply(reply))
 		{
@@ -1404,27 +1404,27 @@ int CSftpControlSocket::ChangeDirParseResponse(bool successful, const wxString& 
 			else
 				error = true;
 		}
-		else if (reply == _T(""))
+		else if (reply.empty())
 			error = true;
 		else if (ParsePwdReply(reply))
 		{
 			CPathCache cache;
 			cache.Store(*m_pCurrentServer, m_CurrentPath, pData->path);
 
-			if (pData->subDir == _T(""))
+			if (pData->subDir.empty())
 			{
 				ResetOperation(FZ_REPLY_OK);
 				return FZ_REPLY_OK;
 			}
 
-			pData->target.Clear();
+			pData->target.clear();
 			pData->opState = cwd_cwd_subdir;
 		}
 		else
 			error = true;
 		break;
 	case cwd_cwd_subdir:
-		if (!successful || reply == _T(""))
+		if (!successful || reply.empty())
 		{
 			if (pData->link_discovery)
 			{
@@ -1497,21 +1497,21 @@ int CSftpControlSocket::ChangeDirSend()
 				return FZ_REPLY_WOULDBLOCK;
 		}
 		cmd = _T("cd ") + QuoteFilename(pData->path.GetPath());
-		m_CurrentPath.Clear();
+		m_CurrentPath.clear();
 		break;
 	case cwd_cwd_subdir:
-		if (pData->subDir == _T(""))
+		if (pData->subDir.empty())
 		{
 			ResetOperation(FZ_REPLY_INTERNALERROR);
 			return FZ_REPLY_ERROR;
 		}
 		else
 			cmd = _T("cd ") + QuoteFilename(pData->subDir);
-		m_CurrentPath.Clear();
+		m_CurrentPath.clear();
 		break;
 	}
 
-	if (cmd != _T(""))
+	if (!cmd.empty())
 		if (!Send(cmd))
 			return FZ_REPLY_ERROR;
 
@@ -1618,7 +1618,7 @@ int CSftpControlSocket::FileTransfer(const wxString localFile, const CServerPath
 {
 	LogMessage(Debug_Verbose, _T("CSftpControlSocket::FileTransfer(...)"));
 
-	if (localFile == _T(""))
+	if (localFile.empty())
 	{
 		if (!download)
 			ResetOperation(FZ_REPLY_CRITICALERROR | FZ_REPLY_NOTSUPPORTED);
@@ -1938,7 +1938,7 @@ int CSftpControlSocket::FileTransferParseResponse(bool successful, const wxStrin
 	}
 	else if (pData->opState == filetransfer_mtime)
 	{
-		if (successful && reply != _T(""))
+		if (successful && !reply.empty())
 		{
 			time_t seconds = 0;
 			bool parsed = true;
@@ -2048,7 +2048,7 @@ int CSftpControlSocket::Mkdir(const CServerPath& path)
 	CMkdirOpData *pData = new CMkdirOpData;
 	pData->path = path;
 
-	if (!m_CurrentPath.IsEmpty())
+	if (!m_CurrentPath.empty())
 	{
 		// Unless the server is broken, a directory already exists if current directory is a subdir of it.
 		if (m_CurrentPath == path || m_CurrentPath.IsSubdirOf(path, false))
@@ -2200,7 +2200,7 @@ int CSftpControlSocket::MkdirSend()
 	{
 	case mkd_findparent:
 	case mkd_cwdsub:
-		m_CurrentPath.Clear();
+		m_CurrentPath.clear();
 		res = Send(_T("cd ") + QuoteFilename(pData->currentPath.GetPath()));
 		break;
 	case mkd_mkdsub:
@@ -2296,7 +2296,7 @@ int CSftpControlSocket::DeleteSend()
 	CSftpDeleteOpData *pData = static_cast<CSftpDeleteOpData *>(m_pCurOpData);
 
 	const wxString& file = pData->files.front();
-	if (file == _T(""))
+	if (file.empty())
 	{
 		LogMessage(__TFILE__, __LINE__, this, Debug_Info, _T("Empty filename"));
 		ResetOperation(FZ_REPLY_INTERNALERROR);
@@ -2304,7 +2304,7 @@ int CSftpControlSocket::DeleteSend()
 	}
 
 	wxString filename = pData->path.FormatFilename(file);
-	if (filename == _T(""))
+	if (filename.empty())
 	{
 		LogMessage(::Error, _("Filename cannot be constructed for directory %s and filename %s"), pData->path.GetPath().c_str(), file.c_str());
 		return FZ_REPLY_ERROR;
@@ -2345,7 +2345,7 @@ int CSftpControlSocket::RemoveDir(const CServerPath& path /*=CServerPath()*/, co
 	pData->subDir = subDir;
 
 	CServerPath fullPath = CPathCache::Lookup(*m_pCurrentServer, pData->path, pData->subDir);
-	if (fullPath.IsEmpty())
+	if (fullPath.empty())
 	{
 		CServerPath fullPath = pData->path;
 
@@ -2387,7 +2387,7 @@ int CSftpControlSocket::RemoveDirParseResponse(bool successful, const wxString&)
 	}
 
 	CSftpRemoveDirOpData *pData = static_cast<CSftpRemoveDirOpData *>(m_pCurOpData);
-	if (pData->path.IsEmpty())
+	if (pData->path.empty())
 	{
 		LogMessage(__TFILE__, __LINE__, this, Debug_Info, _T("Empty pData->path"));
 		ResetOperation(FZ_REPLY_INTERNALERROR);
@@ -2646,7 +2646,7 @@ int CSftpControlSocket::RenameSend()
 			{
 				// Need to invalidate current working directories
 				CServerPath path = CPathCache::Lookup(*m_pCurrentServer, pData->m_cmd.GetFromPath(), pData->m_cmd.GetFromFile());
-				if (path.IsEmpty())
+				if (path.empty())
 				{
 					path = pData->m_cmd.GetFromPath();
 					path.AddSegment(pData->m_cmd.GetFromFile());

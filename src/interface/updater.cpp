@@ -181,7 +181,7 @@ void CUpdater::RunIfNeeded()
 bool CUpdater::LongTimeSinceLastCheck() const
 {
 	wxString const lastCheckStr = COptions::Get()->GetOption(OPTION_UPDATECHECK_LASTDATE);
-	if (lastCheckStr == _T(""))
+	if (lastCheckStr.empty())
 		return true;
 
 	wxDateTime lastCheck;
@@ -204,7 +204,7 @@ bool CUpdater::LongTimeSinceLastCheck() const
 wxString CUpdater::GetUrl()
 {
 	wxString host = CBuildInfo::GetHostname();
-	if (host == _T(""))
+	if (host.empty())
 		host = _T("unknown");
 
 	wxString version(PACKAGE_VERSION, wxConvLocal);
@@ -458,7 +458,7 @@ wxString CUpdater::GetLocalFile( build const& b, bool allow_existing )
 
 	while( CLocalFileSystem::GetFileType(f) != CLocalFileSystem::unknown && (!allow_existing || !VerifyChecksum(f, b.size_, b.hash_))) {
 		if( ++i > 99 ) {
-			return _T("");
+			return wxString();
 		}
 		wxString ext;
 		int pos;
@@ -722,7 +722,7 @@ wxString CUpdater::GetFilename( wxString const& url) const
 	if( pos != -1 ) {
 		ret = url.Mid(pos + 1);
 	}
-	std::size_t p = ret.find_first_of(_T("?#"));
+	size_t p = ret.find_first_of(_T("?#"));
 	if( p != std::string::npos ) {
 		ret = ret.substr(0, p);
 	}
@@ -738,7 +738,7 @@ void CUpdater::SetState( UpdaterState s )
 	if( s != state_ ) {
 		state_ = s;
 		build b = version_information_.available_;
-		for( std::list<CUpdateHandler*>::iterator it = handlers_.begin(); it != handlers_.end(); ++it ) {
+		for( auto it = handlers_.begin(); it != handlers_.end(); ++it ) {
 			if( *it ) {
 				(*it)->UpdaterStateChanged( s, b );
 			}
@@ -758,12 +758,12 @@ wxString CUpdater::DownloadedFile() const
 void CUpdater::AddHandler( CUpdateHandler& handler )
 {
 
-	for( std::list<CUpdateHandler*>::iterator it = handlers_.begin(); it != handlers_.end(); ++it ) {
+	for( auto it = handlers_.begin(); it != handlers_.end(); ++it ) {
 		if( *it == &handler ) {
 			return;
 		}
 	}
-	for( std::list<CUpdateHandler*>::iterator it = handlers_.begin(); it != handlers_.end(); ++it ) {
+	for( auto it = handlers_.begin(); it != handlers_.end(); ++it ) {
 		if( !*it ) {
 			*it = &handler;
 			return;
@@ -774,7 +774,7 @@ void CUpdater::AddHandler( CUpdateHandler& handler )
 
 void CUpdater::RemoveHandler( CUpdateHandler& handler )
 {
-	for( std::list<CUpdateHandler*>::iterator it = handlers_.begin(); it != handlers_.end(); ++it ) {
+	for( auto it = handlers_.begin(); it != handlers_.end(); ++it ) {
 		if( *it == &handler ) {
 			*it = 0;
 			return;

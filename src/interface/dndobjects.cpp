@@ -38,38 +38,38 @@ CShellExtensionInterface::~CShellExtensionInterface()
 	if (m_hMutex)
 		CloseHandle(m_hMutex);
 
-	if (m_dragDirectory != _T(""))
+	if (!m_dragDirectory.empty())
 		RemoveDirectory(m_dragDirectory);
 }
 
 wxString CShellExtensionInterface::InitDrag()
 {
 	if (!m_shellExtension)
-		return _T("");
+		return wxString();
 
 	if (!m_hMutex)
-		return _T("");
+		return wxString();
 
 	if (!CreateDragDirectory())
-		return _T("");
+		return wxString();
 
 	m_hMapping = CreateFileMapping(0, 0, PAGE_READWRITE, 0, DRAG_EXT_MAPPING_LENGTH, DRAG_EXT_MAPPING);
 	if (!m_hMapping)
-		return _T("");
+		return wxString();
 
 	char* data = (char*)MapViewOfFile(m_hMapping, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, DRAG_EXT_MAPPING_LENGTH);
 	if (!data)
 	{
 		CloseHandle(m_hMapping);
 		m_hMapping = 0;
-		return _T("");
+		return wxString();
 	}
 
 	DWORD result = WaitForSingleObject(m_hMutex, 250);
 	if (result != WAIT_OBJECT_0)
 	{
 		UnmapViewOfFile(data);
-		return _T("");
+		return wxString();
 	}
 
 	*data = DRAG_EXT_VERSION;
@@ -86,27 +86,27 @@ wxString CShellExtensionInterface::InitDrag()
 wxString CShellExtensionInterface::GetTarget()
 {
 	if (!m_shellExtension)
-		return _T("");
+		return wxString();
 
 	if (!m_hMutex)
-		return _T("");
+		return wxString();
 
 	if (!m_hMapping)
-		return _T("");
+		return wxString();
 
 	char* data = (char*)MapViewOfFile(m_hMapping, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, DRAG_EXT_MAPPING_LENGTH);
 	if (!data)
 	{
 		CloseHandle(m_hMapping);
 		m_hMapping = 0;
-		return _T("");
+		return wxString();
 	}
 
 	DWORD result = WaitForSingleObject(m_hMutex, 250);
 	if (result != WAIT_OBJECT_0)
 	{
 		UnmapViewOfFile(data);
-		return _T("");
+		return wxString();
 	}
 
 	wxString target;
@@ -121,14 +121,14 @@ wxString CShellExtensionInterface::GetTarget()
 
 	UnmapViewOfFile(data);
 
-	if (target == _T(""))
+	if (target.empty())
 		return target;
 
 	if (target.Last() == '\\')
 		target.RemoveLast();
 	int pos = target.Find('\\', true);
 	if (pos < 1)
-		return _T("");
+		return wxString();
 	target = target.Left(pos + 1);
 
 	return target;
@@ -171,7 +171,7 @@ CShellExtensionInterface* CShellExtensionInterface::CreateInitialized()
 		return 0;
 	}
 
-	if (ext->InitDrag() == _T(""))
+	if (ext->InitDrag().empty())
 	{
 		delete ext;
 		return 0;
@@ -202,7 +202,7 @@ CRemoteDataObject::CRemoteDataObject()
 
 size_t CRemoteDataObject::GetDataSize() const
 {
-	wxASSERT(!m_path.IsEmpty());
+	wxASSERT(!m_path.empty());
 
 	wxCHECK(m_xmlFile.GetElement(), 0);
 
@@ -211,7 +211,7 @@ size_t CRemoteDataObject::GetDataSize() const
 
 bool CRemoteDataObject::GetDataHere(void *buf) const
 {
-	wxASSERT(!m_path.IsEmpty());
+	wxASSERT(!m_path.empty());
 
 	wxCHECK(m_xmlFile.GetElement(), false);
 
@@ -268,7 +268,7 @@ bool CRemoteDataObject::SetData(size_t len, const void* buf)
 		return false;
 
 	wxString path = GetTextElement(pElement, "Path");
-	if (path == _T("") || !m_path.SetSafePath(path))
+	if (path.empty() || !m_path.SetSafePath(path))
 		return false;
 
 	m_fileList.clear();
@@ -280,7 +280,7 @@ bool CRemoteDataObject::SetData(size_t len, const void* buf)
 	{
 		t_fileInfo info;
 		info.name = GetTextElement(pFile, "Name");
-		if (info.name == _T(""))
+		if (info.name.empty())
 			return false;
 
 		const int dir = GetTextElementInt(pFile, "Dir", -1);

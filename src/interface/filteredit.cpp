@@ -138,7 +138,7 @@ void CFilterEditDialog::OnNew(wxCommandEvent&)
 		return;
 	newName = dlg.GetValue();
 
-	if (newName == _T(""))
+	if (newName.empty())
 	{
 		wxMessageBoxEx(_("No filter name given"), _("Cannot create new filter"), wxICON_INFORMATION);
 		return;
@@ -155,7 +155,7 @@ void CFilterEditDialog::OnNew(wxCommandEvent&)
 
 	m_filters.push_back(filter);
 
-	for (std::vector<CFilterSet>::iterator iter = m_filterSets.begin(); iter != m_filterSets.end(); ++iter)
+	for (auto iter = m_filterSets.begin(); iter != m_filterSets.end(); ++iter)
 	{
 		CFilterSet& set = *iter;
 		set.local.push_back(false);
@@ -179,7 +179,7 @@ void CFilterEditDialog::OnDelete(wxCommandEvent& event)
 	m_filters.erase(m_filters.begin() + item);
 
 	// Remote filter from all filter sets
-	for (std::vector<CFilterSet>::iterator iter = m_filterSets.begin(); iter != m_filterSets.end(); ++iter)
+	for (auto iter = m_filterSets.begin(); iter != m_filterSets.end(); ++iter)
 	{
 		CFilterSet& set = *iter;
 		set.local.erase(set.local.begin() + item);
@@ -203,7 +203,7 @@ void CFilterEditDialog::OnRename(wxCommandEvent& event)
 	const wxString& newName = pDlg->GetValue();
 	delete pDlg;
 
-	if (newName == _T(""))
+	if (newName.empty())
 	{
 		wxMessageBoxEx(_("Empty filter names are not allowed."), _("Empty name"), wxICON_ERROR, this);
 		return;
@@ -245,7 +245,7 @@ void CFilterEditDialog::OnCopy(wxCommandEvent& event)
 		return;
 
 	newName = dlg.GetValue();
-	if (newName == _T(""))
+	if (newName.empty())
 	{
 		wxMessageBoxEx(_("Empty filter names are not allowed."), _("Empty name"), wxICON_ERROR, this);
 		return;
@@ -261,7 +261,7 @@ void CFilterEditDialog::OnCopy(wxCommandEvent& event)
 
 	m_filters.push_back(filter);
 
-	for (std::vector<CFilterSet>::iterator iter = m_filterSets.begin(); iter != m_filterSets.end(); ++iter)
+	for (auto iter = m_filterSets.begin(); iter != m_filterSets.end(); ++iter)
 	{
 		CFilterSet& set = *iter;
 		set.local.push_back(false);
@@ -342,7 +342,7 @@ bool CFilterEditDialog::Validate()
 	}
 
 	wxString name = XRCCTRL(*this, "ID_NAME", wxTextCtrl)->GetValue();
-	if (name == _T(""))
+	if (name.empty())
 	{
 		m_pFilterListCtrl->SetSelection(m_currentSelection);
 		XRCCTRL(*this, "ID_NAME", wxTextCtrl)->SetFocus();

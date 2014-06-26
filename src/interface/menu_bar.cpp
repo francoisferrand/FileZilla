@@ -23,9 +23,9 @@ CMenuBar::CMenuBar()
 
 CMenuBar::~CMenuBar()
 {
-	for (std::map<wxMenu*, std::map<int, wxMenuItem*> >::iterator menu_iter = m_hidden_items.begin(); menu_iter != m_hidden_items.end(); ++menu_iter)
+	for (auto menu_iter = m_hidden_items.begin(); menu_iter != m_hidden_items.end(); ++menu_iter)
 	{
-		for (std::map<int, wxMenuItem*>::iterator iter = menu_iter->second.begin(); iter != menu_iter->second.end(); ++iter)
+		for (auto iter = menu_iter->second.begin(); iter != menu_iter->second.end(); ++iter)
 			delete iter->second;
 	}
 
@@ -167,7 +167,7 @@ void CMenuBar::UpdateBookmarkMenu()
 			pMenu->Delete(pSeparator);
 	}
 
-	std::list<int>::iterator ids = m_bookmark_menu_ids.begin();
+	auto ids = m_bookmark_menu_ids.begin();
 
 	// Insert global bookmarks
 	std::list<wxString> global_bookmarks;
@@ -234,7 +234,7 @@ void CMenuBar::ClearBookmarks()
 	CContextControl::_context_controls* controls = pContextControl ? pContextControl->GetCurrentControls() : 0;
 
 	if (!controls->site_bookmarks)
-		controls->site_bookmarks = new CContextControl::_context_controls::_site_bookmarks;
+		controls->site_bookmarks = std::make_shared<CContextControl::_context_controls::_site_bookmarks>();
 	UpdateBookmarkMenu();
 }
 
@@ -266,7 +266,7 @@ void CMenuBar::OnMenuEvent(wxCommandEvent& event)
 			return;
 
 		pState->SetSyncBrowse(false);
-		if (!pData->m_remoteDir.IsEmpty() && pState->IsRemoteIdle())
+		if (!pData->m_remoteDir.empty() && pState->IsRemoteIdle())
 		{
 			const CServer* pServer = pState->GetServer();
 			if (!pServer || *pServer != pData->m_server)
@@ -283,7 +283,7 @@ void CMenuBar::OnMenuEvent(wxCommandEvent& event)
 
 			if (set && pData->m_sync)
 			{
-				wxASSERT(!pData->m_remoteDir.IsEmpty());
+				wxASSERT(!pData->m_remoteDir.empty());
 				pState->SetSyncBrowse(true, pData->m_remoteDir);
 			}
 		}
@@ -304,13 +304,13 @@ void CMenuBar::OnMenuEvent(wxCommandEvent& event)
 			return;
 
 		pState->SetSyncBrowse(false);
-		if (!remote_dir.IsEmpty() && pState->IsRemoteIdle())
+		if (!remote_dir.empty() && pState->IsRemoteIdle())
 		{
 			const CServer* pServer = pState->GetServer();
 			if (pServer)
 			{
 				CServerPath current_remote_path = pState->GetRemotePath();
-				if (!current_remote_path.IsEmpty() && current_remote_path.GetType() != remote_dir.GetType())
+				if (!current_remote_path.empty() && current_remote_path.GetType() != remote_dir.GetType())
 				{
 					wxMessageBoxEx(_("Selected global bookmark and current server use a different server type.\nUse site-specific bookmarks for this server."), _("Bookmark"), wxICON_EXCLAMATION, this);
 					return;
@@ -324,7 +324,7 @@ void CMenuBar::OnMenuEvent(wxCommandEvent& event)
 
 			if (set && sync)
 			{
-				wxASSERT(!remote_dir.IsEmpty());
+				wxASSERT(!remote_dir.empty());
 				pState->SetSyncBrowse(true, remote_dir);
 			}
 		}
@@ -476,7 +476,7 @@ void CMenuBar::UpdateMenubarState()
 	else
 	{
 		CServer tmp;
-		canReconnect = pState->GetLastServer().GetHost() != _T("");
+		canReconnect = !pState->GetLastServer().GetHost().empty();
 	}
 	Enable(XRCID("ID_MENU_SERVER_RECONNECT"), canReconnect);
 
@@ -491,11 +491,11 @@ void CMenuBar::UpdateMenubarState()
 
 bool CMenuBar::ShowItem(int id)
 {
-	for (std::map<wxMenu*, std::map<int, wxMenuItem*> >::iterator menu_iter = m_hidden_items.begin(); menu_iter != m_hidden_items.end(); ++menu_iter)
+	for (auto menu_iter = m_hidden_items.begin(); menu_iter != m_hidden_items.end(); ++menu_iter)
 	{
 		int offset = 0;
 
-		for (std::map<int, wxMenuItem*>::iterator iter = menu_iter->second.begin(); iter != menu_iter->second.end(); ++iter)
+		for (auto iter = menu_iter->second.begin(); iter != menu_iter->second.end(); ++iter)
 		{
 			if (iter->second->GetId() != id)
 			{
@@ -528,9 +528,9 @@ bool CMenuBar::HideItem(int id)
 
 	pMenu->Remove(pItem);
 
-	std::map<wxMenu*, std::map<int, wxMenuItem*> >::iterator menu_iter = m_hidden_items.insert(std::make_pair(pMenu, std::map<int, wxMenuItem*>())).first;
+	auto menu_iter = m_hidden_items.insert(std::make_pair(pMenu, std::map<int, wxMenuItem*>())).first;
 
-	for (std::map<int, wxMenuItem*>::iterator iter = menu_iter->second.begin(); iter != menu_iter->second.end(); ++iter)
+	for (auto iter = menu_iter->second.begin(); iter != menu_iter->second.end(); ++iter)
 	{
 		if (iter->first > (int)pos)
 			break;

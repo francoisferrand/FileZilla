@@ -120,7 +120,7 @@ void CContextManager::UnregisterHandler(CStateEventHandler* pHandler, enum t_sta
 		for (int i = 0; i < STATECHANGE_MAX; i++)
 		{
 			std::list<t_handler> &handlers = m_handlers[i];
-			for (std::list<t_handler>::iterator iter = handlers.begin(); iter != handlers.end(); ++iter)
+			for (auto iter = handlers.begin(); iter != handlers.end(); ++iter)
 			{
 				if (iter->pHandler == pHandler)
 				{
@@ -133,7 +133,7 @@ void CContextManager::UnregisterHandler(CStateEventHandler* pHandler, enum t_sta
 	else
 	{
 		std::list<t_handler> &handlers = m_handlers[notification];
-		for (std::list<t_handler>::iterator iter = handlers.begin(); iter != handlers.end(); ++iter)
+		for (auto iter = handlers.begin(); iter != handlers.end(); ++iter)
 		{
 			if (iter->pHandler == pHandler)
 			{
@@ -228,7 +228,7 @@ CState::~CState()
 	// Unregister all handlers
 	for (int i = 0; i < STATECHANGE_MAX; i++)
 	{
-		for (std::list<t_handler>::iterator iter = m_handlers[i].begin(); iter != m_handlers[i].end(); ++iter)
+		for (auto iter = m_handlers[i].begin(); iter != m_handlers[i].end(); ++iter)
 		{
 			iter->pHandler->m_pState = 0;
 		}
@@ -289,7 +289,7 @@ bool CState::SetLocalDir(const wxString& dir, wxString *error, bool rememberPrev
 		else
 		{
 			CServerPath remote_path = GetSynchronizedDirectory(p);
-			if (remote_path.IsEmpty())
+			if (remote_path.empty())
 			{
 				SetSyncBrowse(false);
 				wxString msg = wxString::Format(_("Could not obtain corresponding remote directory for the local directory '%s'.\nSynchronized browsing has been disabled."),
@@ -330,10 +330,9 @@ bool CState::SetLocalDir(const wxString& dir, wxString *error, bool rememberPrev
 	return true;
 }
 
-bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modified /*=false*/)
+bool CState::SetRemoteDir(std::shared_ptr<CDirectoryListing> const& pDirectoryListing, bool modified)
 {
-	if (!pDirectoryListing)
-	{
+	if (!pDirectoryListing) {
 		SetSyncBrowse(false);
 		if (modified)
 			return false;
@@ -355,12 +354,9 @@ bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modif
 	else
 		m_previouslyVisitedRemoteSubdir = _T("");
 
-	if (modified)
-	{
-		if (!m_pDirectoryListing || m_pDirectoryListing->path != pDirectoryListing->path)
-		{
+	if (modified) {
+		if (!m_pDirectoryListing || m_pDirectoryListing->path != pDirectoryListing->path) {
 			// We aren't interested in these listings
-			delete pDirectoryListing;
 			return true;
 		}
 	}
@@ -371,7 +367,6 @@ bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modif
 		pDirectoryListing->m_failed)
 	{
 		// We still got an old listing, no need to display the new one
-		delete pDirectoryListing;
 		return true;
 	}
 
@@ -382,8 +377,7 @@ bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modif
 	else
 		NotifyHandlers(STATECHANGE_REMOTE_DIR_MODIFIED);
 
-	if (m_sync_browse.is_changing && !modified)
-	{
+	if (m_sync_browse.is_changing && !modified) {
 		m_sync_browse.is_changing = false;
 		if (m_pDirectoryListing->path != m_sync_browse.remote_root && !m_pDirectoryListing->path.IsSubdirOf(m_sync_browse.remote_root, false))
 		{
@@ -393,11 +387,9 @@ bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modif
 					m_sync_browse.remote_root.GetPath().c_str());
 			wxMessageBoxEx(msg, _("Synchronized browsing"));
 		}
-		else
-		{
+		else {
 			CLocalPath local_path = GetSynchronizedDirectory(m_pDirectoryListing->path);
-			if (local_path.empty())
-			{
+			if (local_path.empty()) {
 				SetSyncBrowse(false);
 				wxString msg = wxString::Format(_("Could not obtain corresponding local directory for the remote directory '%s'.\nSynchronized browsing has been disabled."),
 					m_pDirectoryListing->path.GetPath().c_str());
@@ -406,8 +398,7 @@ bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modif
 			}
 
 			wxString error;
-			if (!local_path.Exists(&error))
-			{
+			if (!local_path.Exists(&error)) {
 				SetSyncBrowse(false);
 				wxString msg = error + _T("\n") + _("Synchronized browsing has been disabled.");
 				wxMessageBoxEx(msg, _("Synchronized browsing"));
@@ -427,7 +418,7 @@ bool CState::SetRemoteDir(const CDirectoryListing *pDirectoryListing, bool modif
 	return true;
 }
 
-CSharedPointer<const CDirectoryListing> CState::GetRemoteDir() const
+std::shared_ptr<CDirectoryListing> CState::GetRemoteDir() const
 {
 	return m_pDirectoryListing;
 }
@@ -508,13 +499,13 @@ void CState::SetServer(const CServer* server)
 	if (server)
 	{
 		if (m_last_server != *server)
-			m_last_path.Clear();
+			m_last_path.clear();
 		m_last_server = *server;
 
 		m_pServer = new CServer(*server);
 
 		const wxString& name = server->GetName();
-		if (!name.IsEmpty())
+		if (!name.empty())
 			m_title = name + _T(" - ") + server->FormatServer();
 		else
 			m_title = server->FormatServer();
@@ -628,7 +619,7 @@ void CState::UnregisterHandler(CStateEventHandler* pHandler, enum t_statechange_
 		for (int i = 0; i < STATECHANGE_MAX; i++)
 		{
 			std::list<t_handler> &handlers = m_handlers[i];
-			for (std::list<t_handler>::iterator iter = handlers.begin(); iter != handlers.end(); ++iter)
+			for (auto iter = handlers.begin(); iter != handlers.end(); ++iter)
 			{
 				if (iter->pHandler == pHandler)
 				{
@@ -641,7 +632,7 @@ void CState::UnregisterHandler(CStateEventHandler* pHandler, enum t_statechange_
 	else
 	{
 		std::list<t_handler> &handlers = m_handlers[notification];
-		for (std::list<t_handler>::iterator iter = handlers.begin(); iter != handlers.end(); ++iter)
+		for (auto iter = handlers.begin(); iter != handlers.end(); ++iter)
 		{
 			if (iter->pHandler == pHandler)
 			{
@@ -717,7 +708,7 @@ void CState::UploadDroppedFiles(const wxFileDataObject* pFileDataObject, const w
 	CServerPath path = m_pDirectoryListing->path;
 	if (subdir == _T("..") && path.HasParent())
 		path = path.GetParent();
-	else if (subdir != _T(""))
+	else if (!subdir.empty())
 		path.AddSegment(subdir);
 
 	UploadDroppedFiles(pFileDataObject, path, queueOnly);
@@ -836,7 +827,7 @@ void CState::HandleDroppedFiles(const wxFileDataObject* pFileDataObject, const C
 			}
 		}
 	}
-	if (!error.IsEmpty())
+	if (!error.empty())
 		wxMessageBoxEx(error, _("Could not complete operation"));
 #endif
 
@@ -879,7 +870,7 @@ bool CState::RecursiveCopy(CLocalPath source, const CLocalPath& target)
 		wxString file;
 		while (fs.GetNextFile(file, is_link, is_dir, 0, 0, 0))
 		{
-			if (file == _T(""))
+			if (file.empty())
 			{
 				wxGetApp().DisplayEncodingWarning();
 				continue;
@@ -1050,16 +1041,16 @@ bool CState::SetSyncBrowse(bool enable, const CServerPath& assumed_remote_root /
 
 	if (!enable)
 	{
-		wxASSERT(assumed_remote_root.IsEmpty());
+		wxASSERT(assumed_remote_root.empty());
 		m_sync_browse.local_root.clear();
-		m_sync_browse.remote_root.Clear();
+		m_sync_browse.remote_root.clear();
 		m_sync_browse.is_changing = false;
 
 		NotifyHandlers(STATECHANGE_SYNC_BROWSE);
 		return false;
 	}
 
-	if (!m_pDirectoryListing && assumed_remote_root.IsEmpty())
+	if (!m_pDirectoryListing && assumed_remote_root.empty())
 	{
 		NotifyHandlers(STATECHANGE_SYNC_BROWSE);
 		return false;
@@ -1068,7 +1059,7 @@ bool CState::SetSyncBrowse(bool enable, const CServerPath& assumed_remote_root /
 	m_sync_browse.is_changing = false;
 	m_sync_browse.local_root = m_localDir;
 
-	if (assumed_remote_root.IsEmpty())
+	if (assumed_remote_root.empty())
 		m_sync_browse.remote_root = m_pDirectoryListing->path;
 	else
 	{

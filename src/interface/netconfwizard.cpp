@@ -137,7 +137,7 @@ void CNetConfWizard::OnPageChanging(wxWizardEvent& event)
 		{
 			wxTextCtrl* control = XRCCTRL(*this, "ID_ACTIVEIP", wxTextCtrl);
 			wxString ip = control->GetValue();
-			if (ip == _T(""))
+			if (ip.empty())
 			{
 				wxMessageBoxEx(_("Please enter your external IP address"));
 				control->SetFocus();
@@ -156,7 +156,7 @@ void CNetConfWizard::OnPageChanging(wxWizardEvent& event)
 		{
 			wxTextCtrl* pResolver = XRCCTRL(*this, "ID_ACTIVERESOLVER", wxTextCtrl);
 			wxString address = pResolver->GetValue();
-			if (address == _T(""))
+			if (address.empty())
 			{
 				wxMessageBoxEx(_("Please enter an URL where to get your external address from"));
 				pResolver->SetFocus();
@@ -687,7 +687,7 @@ wxString CNetConfWizard::GetExternalIPAddress()
 		{
 			PrintMessage(_("Failed to retrieve local ip address. Aborting"), 1);
 			CloseSocket();
-			return _T("");
+			return wxString();
 		}
 
 		return addr.IPAddress();
@@ -709,7 +709,7 @@ wxString CNetConfWizard::GetExternalIPAddress()
 			m_pIPResolver = new CExternalIPResolver(this);
 			m_pIPResolver->GetExternalIP(address, CSocket::ipv4, true);
 			if (!m_pIPResolver->Done())
-				return _T("");
+				return wxString();
 		}
 		if (!m_pIPResolver->Successful())
 		{
@@ -720,7 +720,7 @@ wxString CNetConfWizard::GetExternalIPAddress()
 
 			m_testResult = externalfailed;
 			CloseSocket();
-			return _T("");
+			return wxString();
 		}
 
 		wxString ip = m_pIPResolver->GetIP();
@@ -731,7 +731,7 @@ wxString CNetConfWizard::GetExternalIPAddress()
 		return ip;
 	}
 
-	return _T("");
+	return wxString();
 }
 
 void CNetConfWizard::OnExternalIPAddress(fzExternalIPResolveEvent& event)
@@ -764,9 +764,9 @@ void CNetConfWizard::SendNextCommand()
 		{
 			PrintMessage(_("Checking for correct external IP address"), 0);
 			wxString ip = GetExternalIPAddress();
-			if (ip == _T(""))
+			if (ip.empty())
 				return;
-			if (!GetIPV6LongForm(ip).IsEmpty())
+			if (!GetIPV6LongForm(ip).empty())
 			{
 				PrintMessage(_("You appear to be using an IPv6-only host. This wizard does not support this environment."), 1);
 				CloseSocket();

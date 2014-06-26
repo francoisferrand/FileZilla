@@ -4,19 +4,9 @@
 
 #include <wx/wx.h>
 
-#if HAVE_TR1_UNORDERED_MAP
-#include <tr1/unordered_map>
-#else
 #include <unordered_map>
-#endif
 
 #include <algorithm>
-
-namespace std {
-namespace tr1 {
-}
-using namespace tr1;
-}
 
 unsigned int CalculateCapacity()
 {
@@ -150,7 +140,7 @@ void BenchmarkStringCoalescer()
 	wxDateTime start = wxDateTime::UNow();
 	for (int i = 0; i < 100; ++i)
 	{
-		for( std::deque<wxString>::iterator it = s.begin(); it != s.end(); ++it)
+		for( auto it = s.begin(); it != s.end(); ++it)
 			Coalesce( *it );
 	}
 	wxDateTime stop = wxDateTime::UNow();

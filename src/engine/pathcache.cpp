@@ -24,7 +24,7 @@ CPathCache::~CPathCache()
 
 void CPathCache::Store(const CServer& server, const CServerPath& target, const CServerPath& source, const wxString subdir/*=_T("")*/)
 {
-	wxASSERT(!target.IsEmpty() && !source.IsEmpty());
+	wxASSERT(!target.empty() && !source.empty());
 
 	tServerCache *pServerCache;
 	tCacheIterator iter = m_cache.find(server);
@@ -53,7 +53,7 @@ CServerPath CPathCache::Lookup(const CServer& server, const CServerPath& source,
 
 	CServerPath result = Lookup(*iter->second, source, subdir);
 
-	if (result.IsEmpty())
+	if (result.empty())
 		m_misses++;
 	else
 		m_hits++;
@@ -103,17 +103,17 @@ void CPathCache::InvalidatePath(const CServer& server, const CServerPath& path, 
 		iter->second->erase(serverIter);
 	}
 
-	if (target.IsEmpty() && subdir != _T(""))
+	if (target.empty() && !subdir.empty())
 	{
 		target = path;
 		if (!target.AddSegment(subdir))
 			return;
 	}
 
-	if (!target.IsEmpty())
+	if (!target.empty())
 	{
 		// Unfortunately O(n), don't know of a faster way.
-		for (std::map<CSourcePath, CServerPath>::iterator serverIter = iter->second->begin(); serverIter != iter->second->end();)
+		for (auto serverIter = iter->second->begin(); serverIter != iter->second->end();)
 		{
 			if (serverIter->second == target || target.IsParentOf(serverIter->second, false))
 				iter->second->erase(serverIter++);

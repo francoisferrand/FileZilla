@@ -70,8 +70,10 @@ int CUpdateDialog::ShowModal()
 	}
 
 	wxAnimation a = CThemeProvider::Get()->CreateAnimation(_T("ART_THROBBER"), wxSize(16,16));
+	XRCCTRL(*this, "ID_WAIT_CHECK", wxAnimationCtrl)->SetMinSize(a.GetSize());
 	XRCCTRL(*this, "ID_WAIT_CHECK", wxAnimationCtrl)->SetAnimation(a);
 	XRCCTRL(*this, "ID_WAIT_CHECK", wxAnimationCtrl)->Play();
+	XRCCTRL(*this, "ID_WAIT_DOWNLOAD", wxAnimationCtrl)->SetMinSize(a.GetSize());
 	XRCCTRL(*this, "ID_WAIT_DOWNLOAD", wxAnimationCtrl)->SetAnimation(a);
 	XRCCTRL(*this, "ID_WAIT_DOWNLOAD", wxAnimationCtrl)->Play();
 
@@ -108,7 +110,7 @@ void CUpdateDialog::Wrap()
 
 	// Keep track of maximum page size
 	wxSize size = GetSizer()->GetMinSize();
-	for (std::vector<wxPanel*>::iterator iter = panels_.begin(); iter != panels_.end(); ++iter)
+	for (auto iter = panels_.begin(); iter != panels_.end(); ++iter)
 		size.IncTo((*iter)->GetSizer()->GetMinSize());
 
 	wxSize panelSize = size;
@@ -118,7 +120,7 @@ void CUpdateDialog::Wrap()
 	parentPanel->SetInitialSize(panelSize);
 
 	// Adjust pages sizes according to maximum size
-	for (std::vector<wxPanel*>::iterator iter = panels_.begin(); iter != panels_.end(); ++iter) {
+	for (auto iter = panels_.begin(); iter != panels_.end(); ++iter) {
 		(*iter)->GetSizer()->SetMinSize(size);
 		(*iter)->GetSizer()->Fit(*iter);
 		(*iter)->GetSizer()->SetSizeHints(*iter);
@@ -132,7 +134,7 @@ void CUpdateDialog::Wrap()
 	Show();
 #endif
 
-	for (std::vector<wxPanel*>::iterator iter = panels_.begin(); iter != panels_.end(); ++iter) {
+	for (auto iter = panels_.begin(); iter != panels_.end(); ++iter) {
 		(*iter)->Hide();
 	}
 	panels_[0]->Show();
@@ -153,7 +155,7 @@ void CUpdateDialog::LoadPanel(wxString const& name)
 void CUpdateDialog::UpdaterStateChanged( UpdaterState s, build const& v )
 {
 	timer_.Stop();
-	for (std::vector<wxPanel*>::iterator iter = panels_.begin(); iter != panels_.end(); ++iter) {
+	for (auto iter = panels_.begin(); iter != panels_.end(); ++iter) {
 		(*iter)->Hide();
 	}
 	if( s == idle ) {
