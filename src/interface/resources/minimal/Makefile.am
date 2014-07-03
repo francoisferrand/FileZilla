@@ -48,6 +48,7 @@ mac-copy-resources: $(dist_resources_DATA)
 	mkdir -p "$(top_builddir)/FileZilla.app/Contents/SharedSupport/resources/minimal/32x32";
 	for i in $(dist_resources32_DATA); do \
 	  cp -f "$(srcdir)/$$i" "$(top_builddir)/FileZilla.app/Contents/SharedSupport/resources/minimal/32x32"; \
+	  cp -f "$(srcdir)/$$i" "$(top_builddir)/FileZilla.app/Contents/SharedSupport/resources/minimal/16x16/$(basename $$i .png)@2x.png"; \
 	done
 	for i in $(dist_resources_DATA); do \
 	  cp -f "$(srcdir)/$$i" "$(top_builddir)/FileZilla.app/Contents/SharedSupport/resources/minimal"; \
