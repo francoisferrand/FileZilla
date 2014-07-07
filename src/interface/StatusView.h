@@ -13,7 +13,7 @@ public:
 	virtual ~CStatusView();
 
 	void AddToLog(CLogmsgNotification *pNotification);
-	void AddToLog(enum MessageType messagetype, const wxString& message, const wxDateTime& time);
+	void AddToLog(MessageType messagetype, const wxString& message, const wxDateTime& time);
 
 	void InitDefAttr();
 
@@ -44,7 +44,7 @@ protected:
 #ifdef __WXMSW__
 		CHARFORMAT2 cf;
 #endif
-	} m_attributeCache[MessageTypeCount];
+	} m_attributeCache[static_cast<int>(MessageType::count)];
 
 	bool m_rtl;
 

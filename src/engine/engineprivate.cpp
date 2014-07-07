@@ -142,10 +142,10 @@ const CCommand *CFileZillaEnginePrivate::GetCurrentCommand() const
 	return m_pCurrentCommand;
 }
 
-enum Command CFileZillaEnginePrivate::GetCurrentCommandId() const
+Command CFileZillaEnginePrivate::GetCurrentCommandId() const
 {
 	if (!m_pCurrentCommand)
-		return cmd_none;
+		return Command::none;
 
 	else
 		return GetCurrentCommand()->GetId();
@@ -170,7 +170,7 @@ void CFileZillaEnginePrivate::AddNotification(CNotification *pNotification)
 
 int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
 {
-	m_pLogging->LogMessage(Debug_Debug, _T("CFileZillaEnginePrivate::ResetOperation(%d)"), nErrorCode);
+	m_pLogging->LogMessage(MessageType::Debug_Debug, _T("CFileZillaEnginePrivate::ResetOperation(%d)"), nErrorCode);
 
 	if (nErrorCode & FZ_REPLY_DISCONNECTED)
 		m_lastListDir.clear();
@@ -180,10 +180,10 @@ int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
 		if ((nErrorCode & FZ_REPLY_NOTSUPPORTED) == FZ_REPLY_NOTSUPPORTED)
 		{
 			wxASSERT(m_bIsInCommand);
-			m_pLogging->LogMessage(Error, _("Command not supported by this protocol"));
+			m_pLogging->LogMessage(MessageType::Error, _("Command not supported by this protocol"));
 		}
 
-		if (m_pCurrentCommand->GetId() == cmd_connect)
+		if (m_pCurrentCommand->GetId() == Command::connect)
 		{
 			if (!(nErrorCode & ~(FZ_REPLY_ERROR | FZ_REPLY_DISCONNECTED | FZ_REPLY_TIMEOUT | FZ_REPLY_CRITICALERROR | FZ_REPLY_PASSWORDFAILED)) &&
 				nErrorCode & (FZ_REPLY_ERROR | FZ_REPLY_DISCONNECTED))
@@ -200,7 +200,7 @@ int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
 						unsigned int delay = GetRemainingReconnectDelay(pConnectCommand->GetServer());
 						if (!delay)
 							delay = 1;
-						m_pLogging->LogMessage(Status, _("Waiting to retry..."));
+						m_pLogging->LogMessage(MessageType::Status, _("Waiting to retry..."));
 						m_retryTimer.Start(delay, true);
 						return FZ_REPLY_WOULDBLOCK;
 					}
@@ -227,7 +227,7 @@ int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
 		{
 			COperationNotification *notification = new COperationNotification();
 			notification->nReplyCode = nErrorCode;
-			notification->commandId = cmd_none;
+			notification->commandId = Command::none;
 			AddNotification(notification);
 		}
 	}
@@ -278,7 +278,7 @@ int CFileZillaEnginePrivate::Connect(const CConnectCommand &command)
 	{
 		ServerProtocol protocol = CServer::GetProtocolFromPort(command.GetServer().GetPort(), true);
 		if (protocol != UNKNOWN && protocol != command.GetServer().GetProtocol())
-			m_pLogging->LogMessage(Status, _("Selected port usually in use by a different protocol."));
+			m_pLogging->LogMessage(MessageType::Status, _("Selected port usually in use by a different protocol."));
 	}
 
 	return ContinueConnect();
@@ -307,7 +307,7 @@ int CFileZillaEnginePrivate::Cancel(const CCancelCommand &)
 
 	if (m_retryTimer.IsRunning())
 	{
-		wxASSERT(m_pCurrentCommand && m_pCurrentCommand->GetId() == cmd_connect);
+		wxASSERT(m_pCurrentCommand && m_pCurrentCommand->GetId() == Command::connect);
 
 		delete m_pControlSocket;
 		m_pControlSocket = 0;
@@ -317,10 +317,10 @@ int CFileZillaEnginePrivate::Cancel(const CCancelCommand &)
 
 		m_retryTimer.Stop();
 
-		m_pLogging->LogMessage(::Error, _("Connection attempt interrupted by user"));
+		m_pLogging->LogMessage(MessageType::Error, _("Connection attempt interrupted by user"));
 		COperationNotification *notification = new COperationNotification();
 		notification->nReplyCode = FZ_REPLY_DISCONNECTED|FZ_REPLY_CANCELED;
-		notification->commandId = cmd_connect;
+		notification->commandId = Command::connect;
 		AddNotification(notification);
 
 		return FZ_REPLY_WOULDBLOCK;
@@ -342,8 +342,9 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 	if (command.GetFlags() & LIST_FLAG_LINK && command.GetSubDir().empty())
 		return FZ_REPLY_SYNTAXERROR;
 
-	bool refresh = (command.GetFlags() & LIST_FLAG_REFRESH) != 0;
-	bool avoid = (command.GetFlags() & LIST_FLAG_AVOID) != 0;
+	int flags = command.GetFlags();
+	bool const refresh = (command.GetFlags() & LIST_FLAG_REFRESH) != 0;
+	bool const avoid = (command.GetFlags() & LIST_FLAG_AVOID) != 0;
 	if (refresh && avoid)
 		return FZ_REPLY_SYNTAXERROR;
 
@@ -364,11 +365,9 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 				if (found && !is_outdated)
 				{
 					if (pListing->m_hasUnsureEntries)
-						refresh = true;
-					else
-					{
-						if (!avoid)
-						{
+						flags |= LIST_FLAG_REFRESH;
+					else {
+						if (!avoid) {
 							m_lastListDir = pListing->path;
 							m_lastListTime = CDateTime::Now();
 							CDirectoryListingNotification *pNotification = new CDirectoryListingNotification(pListing->path);
@@ -379,7 +378,7 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 					}
 				}
 				if (is_outdated)
-					refresh = true;
+					flags |= LIST_FLAG_REFRESH;
 				delete pListing;
 			}
 		}
@@ -388,7 +387,7 @@ int CFileZillaEnginePrivate::List(const CListCommand &command)
 		return FZ_REPLY_BUSY;
 
 	m_pCurrentCommand = command.Clone();
-	return m_pControlSocket->List(command.GetPath(), command.GetSubDir(), command.GetFlags());
+	return m_pControlSocket->List(command.GetPath(), command.GetSubDir(), flags);
 }
 
 int CFileZillaEnginePrivate::FileTransfer(const CFileTransferCommand &command)
@@ -602,9 +601,9 @@ unsigned int CFileZillaEnginePrivate::GetRemainingReconnectDelay(const CServer& 
 
 void CFileZillaEnginePrivate::OnTimer(wxTimerEvent&)
 {
-	if (!m_pCurrentCommand || m_pCurrentCommand->GetId() != cmd_connect)
+	if (!m_pCurrentCommand || m_pCurrentCommand->GetId() != Command::connect)
 	{
-		wxFAIL_MSG(_T("CFileZillaEnginePrivate::OnTimer called without pending cmd_connect"));
+		wxFAIL_MSG(_T("CFileZillaEnginePrivate::OnTimer called without pending Command::connect"));
 		return;
 	}
 	wxASSERT(!IsConnected());
@@ -622,7 +621,7 @@ int CFileZillaEnginePrivate::ContinueConnect()
 	unsigned int delay = GetRemainingReconnectDelay(server);
 	if (delay)
 	{
-		m_pLogging->LogMessage(Status, wxPLURAL("Delaying connection for %d second due to previously failed connection attempt...", "Delaying connection for %d seconds due to previously failed connection attempt...", (delay + 999) / 1000), (delay + 999) / 1000);
+		m_pLogging->LogMessage(MessageType::Status, wxPLURAL("Delaying connection for %d second due to previously failed connection attempt...", "Delaying connection for %d seconds due to previously failed connection attempt...", (delay + 999) / 1000), (delay + 999) / 1000);
 		m_retryTimer.Start(delay, true);
 		return FZ_REPLY_WOULDBLOCK;
 	}
@@ -643,7 +642,7 @@ int CFileZillaEnginePrivate::ContinueConnect()
 		m_pControlSocket = new CHttpControlSocket(this);
 		break;
 	default:
-		m_pLogging->LogMessage(Debug_Warning, _T("Not a valid protocol: %d"), server.GetProtocol());
+		m_pLogging->LogMessage(MessageType::Debug_Warning, _T("Not a valid protocol: %d"), server.GetProtocol());
 		return FZ_REPLY_SYNTAXERROR|FZ_REPLY_DISCONNECTED;
 	}
 

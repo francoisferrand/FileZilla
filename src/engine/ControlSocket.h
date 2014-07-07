@@ -8,11 +8,11 @@
 class COpData
 {
 public:
-	COpData(enum Command op_Id);
+	COpData(Command op_Id);
 	virtual ~COpData();
 
 	int opState;
-	const enum Command opId;
+	Command const opId;
 
 	bool waitForAsyncRequest;
 	bool holdsLock;
@@ -24,7 +24,7 @@ class CConnectOpData : public COpData
 {
 public:
 	CConnectOpData()
-		: COpData(cmd_connect),
+		: COpData(Command::connect),
 		port(0)
 	{
 	}
@@ -61,7 +61,7 @@ class CMkdirOpData : public COpData
 {
 public:
 	CMkdirOpData()
-		: COpData(cmd_mkdir)
+		: COpData(Command::mkdir)
 	{
 	}
 
@@ -79,7 +79,7 @@ class CChangeDirOpData : public COpData
 {
 public:
 	CChangeDirOpData()
-		: COpData(cmd_cwd)
+		: COpData(Command::cwd)
 	{
 		tryMkdOnFail = false;
 		link_discovery = false;
@@ -97,7 +97,7 @@ public:
 	bool link_discovery;
 };
 
-enum TransferEndReason
+enum class TransferEndReason
 {
 	none,
 	successful,
@@ -135,7 +135,7 @@ public:
 
 	// If m_pCurrentOpData is zero, this function returns the current command
 	// from the engine.
-	enum Command GetCurrentCommandId() const;
+	Command GetCurrentCommandId() const;
 
 	virtual void TransferEnd() {}
 

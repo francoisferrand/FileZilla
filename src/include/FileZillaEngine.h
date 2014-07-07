@@ -21,7 +21,7 @@ public:
 
 	// Execute the given command. See commands.h for a list of the available
 	// commands and reply codes.
-	int Command(const CCommand &command);
+	int Execute(const CCommand &command);
 
 	bool IsBusy() const;
 	bool IsConnected() const;
@@ -44,7 +44,7 @@ public:
 	CNotification* GetNextNotification();
 
 	const CCommand *GetCurrentCommand() const;
-	enum Command GetCurrentCommandId() const;
+	Command GetCurrentCommandId() const;
 
 	// Sets the reply to an async request, e.g. a file exists request.
 	// See notifiction.h for details.

@@ -486,7 +486,7 @@ int CLocalListView::OnGetItemImage(long item) const
 			CLocalFileSystem::GetFileInfo(path, isSymLink, NULL, NULL, NULL);
 		}
 
-		icon = pThis->GetIconIndex(data->dir ? dir : file, path, true, isSymLink);
+		icon = pThis->GetIconIndex(data->dir ? iconType::dir : iconType::file, path, true, isSymLink);
 	}
 	return icon;
 }

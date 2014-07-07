@@ -1,4 +1,4 @@
-AC_INIT([FileZilla],[3.9.0-beta3],[tim.kosse@filezilla-project.org],[],[https://filezilla-project.org/])
+AC_INIT([FileZilla],[3.9.0-rc1],[tim.kosse@filezilla-project.org],[],[https://filezilla-project.org/])
 AC_CONFIG_HEADERS([src/include/config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
@@ -215,6 +215,9 @@ if test "$buildmain" = "yes" -o "$shellextonly" = "yes"; then
   AC_SUBST(WINDRES)
   AC_SUBST(WINDRESFLAGS)
 
+  # Set version macros
+  # ------------------
+
   # version.rc.in needs a major, minor and micro version number
   vnumber=${PACKAGE_VERSION%-*}
   PACKAGE_VERSION_MAJOR=${vnumber%%.*}
@@ -246,6 +249,21 @@ if test "$buildmain" = "yes" -o "$shellextonly" = "yes"; then
   AC_SUBST(PACKAGE_VERSION_MICRO)
   AC_SUBST(PACKAGE_VERSION_NANO)
 
+  # Enable DEP and ASLR linker flags
+  # --------------------------------
+
+  AX_CHECK_LINK_FLAG([-Wl,--dynamicbase], [LDFLAGS="$LDFLAGS -Wl,--dynamicbase"])
+  AX_CHECK_LINK_FLAG([-Wl,--nxcompat], [LDFLAGS="$LDFLAGS -Wl,--nxcompat"])
+
+  # Set Windows-specific linker flags
+  # ---------------------------------
+  if echo $host_os | grep "cygwin\|mingw" > /dev/null 2>&1; then
+    # Todo: Once Microsoft ends support for some XP derivatives, increase to Vista.
+    AX_CHECK_LINK_FLAG([-Wl,--major-subsystem-version -Wl,5], [LDFLAGS="$LDFLAGS -Wl,--major-subsystem-version -Wl,5"])
+    AX_CHECK_LINK_FLAG([-Wl,--minor-subsystem-version -Wl,1], [LDFLAGS="$LDFLAGS -Wl,--minor-subsystem-version -Wl,1"])
+    AX_CHECK_LINK_FLAG([-Wl,--major-os-version -Wl,5], [LDFLAGS="$LDFLAGS -Wl,--major-os-version -Wl,5"])
+    AX_CHECK_LINK_FLAG([-Wl,--minor-os-version -Wl,1], [LDFLAGS="$LDFLAGS -Wl,--minor-os-version -Wl,1"])
+  fi
 fi
 
 if test "$buildmain" = "yes"; then

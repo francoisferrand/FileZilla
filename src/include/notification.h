@@ -80,7 +80,7 @@ public:
 	virtual enum NotificationId GetID() const;
 
 	wxString msg;
-	enum MessageType msgType; // Type of message, see logging.h for details
+	MessageType msgType; // Type of message, see logging.h for details
 };
 
 // If CFileZillaEngine does return with FZ_REPLY_WOULDBLOCK, you will receive
@@ -93,7 +93,7 @@ public:
 	virtual enum NotificationId GetID() const;
 
 	int nReplyCode;
-	enum Command commandId;
+	Command commandId;
 };
 
 // You get this type of notification everytime a directory listing has been

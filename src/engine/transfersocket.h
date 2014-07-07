@@ -9,7 +9,7 @@ class CFileZillaEnginePrivate;
 class CFtpControlSocket;
 class CDirectoryListingParser;
 
-enum TransferMode
+enum class TransferMode
 {
 	list,
 	upload,
@@ -22,7 +22,7 @@ class CTlsSocket;
 class CTransferSocket : public wxEvtHandler, public CSocketEventHandler
 {
 public:
-	CTransferSocket(CFileZillaEnginePrivate *pEngine, CFtpControlSocket *pControlSocket, enum TransferMode transferMode);
+	CTransferSocket(CFileZillaEnginePrivate *pEngine, CFtpControlSocket *pControlSocket, TransferMode transferMode);
 	virtual ~CTransferSocket();
 
 	wxString SetupActiveTransfer(const wxString& ip);
@@ -34,14 +34,14 @@ public:
 
 	bool m_binaryMode;
 
-	enum TransferEndReason GetTransferEndreason() const { return m_transferEndReason; }
+	TransferEndReason GetTransferEndreason() const { return m_transferEndReason; }
 
 protected:
 	bool CheckGetNextWriteBuffer();
 	bool CheckGetNextReadBuffer();
 	void FinalizeWrite();
 
-	void TransferEnd(enum TransferEndReason reason);
+	void TransferEnd(TransferEndReason reason);
 
 	bool InitBackend();
 	bool InitTls(const CTlsSocket* pPrimaryTlsSocket);
@@ -73,9 +73,9 @@ protected:
 	CFtpControlSocket *m_pControlSocket;
 
 	bool m_bActive;
-	enum TransferEndReason m_transferEndReason;
+	TransferEndReason m_transferEndReason;
 
-	enum TransferMode m_transferMode;
+	TransferMode m_transferMode;
 
 	char *m_pTransferBuffer;
 	int m_transferBufferLen;
