@@ -63,12 +63,23 @@ wxListCtrlEx::~wxListCtrlEx()
 	delete [] m_pVisibleColumnMapping;
 }
 
-#ifndef __WXMSW__
-wxWindow* wxListCtrlEx::GetMainWindow() const
+wxWindow* wxListCtrlEx::GetMainWindow()
 {
+#ifdef __WXMSW__
+	return this;
+#else
 	return reinterpret_cast<wxWindow*>(m_mainWin);
-}
 #endif
+}
+
+wxWindow const* wxListCtrlEx::GetMainWindow() const
+{
+#ifdef __WXMSW__
+	return this;
+#else
+	return reinterpret_cast<wxWindow const*>(m_mainWin);
+#endif
+}
 
 void wxListCtrlEx::OnPostScroll()
 {
@@ -963,11 +974,7 @@ void wxListCtrlEx::SetHeaderSortIconIndex(int col, int icon)
 void wxListCtrlEx::RefreshListOnly(bool eraseBackground /*=true*/)
 {
 	// See comment in wxGenericListCtrl::Refresh
-#ifdef __WXMSW__
-	Refresh(eraseBackground);
-#else
 	GetMainWindow()->Refresh(eraseBackground);
-#endif
 }
 
 void wxListCtrlEx::CancelLabelEdit()
@@ -1148,18 +1155,13 @@ bool wxListCtrlEx::HasSelection() const
 
 wxRect wxListCtrlEx::GetListRect() const
 {
-#ifdef __WXMSW__
-	wxRect windowRect = GetClientRect();
-	{
-		wxRect topRect;
-		if (GetItemRect(0, topRect))
-		{
-			windowRect.height -= topRect.y;
-			windowRect.y += topRect.y;
-		}
-	}
-#else
 	wxRect windowRect = GetMainWindow()->GetClientRect();
+#ifdef __WXMSW__
+	wxRect topRect;
+	if (GetItemRect(0, topRect)) {
+		windowRect.height -= topRect.y;
+		windowRect.y += topRect.y;
+	}
 #endif
 
 	return windowRect;
@@ -1183,8 +1185,8 @@ bool CListCtrlDropTarget::OnDrop(wxCoord, wxCoord)
 
 wxDragResult CListCtrlDropTarget::OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
 {
-	if (!m_timer.IsRunning() && IsScroll(wxPoint(x, y)))
-	{
+	def = FixupDragResult(def);
+	if (!m_timer.IsRunning() && IsScroll(wxPoint(x, y))) {
 		m_timer.Start(100, true);
 		m_count = 0;
 	}
@@ -1201,8 +1203,8 @@ void CListCtrlDropTarget::OnLeave()
 
 wxDragResult CListCtrlDropTarget::OnEnter(wxCoord x, wxCoord y, wxDragResult def)
 {
-	if (!m_timer.IsRunning() && IsScroll(wxPoint(x, y)))
-	{
+	def = FixupDragResult(def);
+	if (!m_timer.IsRunning() && IsScroll(wxPoint(x, y))) {
 		m_timer.Start(100, true);
 		m_count = 0;
 	}
@@ -1218,6 +1220,10 @@ bool CListCtrlDropTarget::IsScroll(wxPoint p) const
 
 bool CListCtrlDropTarget::IsTopScroll(wxPoint p) const
 {
+	if (!m_pListCtrl->GetItemCount()) {
+		return false;
+	}
+
 	wxRect itemRect;
 	if (!m_pListCtrl->GetItemRect(m_pListCtrl->GetTopItem(), itemRect))
 		return false;
@@ -1245,6 +1251,10 @@ bool CListCtrlDropTarget::IsTopScroll(wxPoint p) const
 
 bool CListCtrlDropTarget::IsBottomScroll(wxPoint p) const
 {
+	if (!m_pListCtrl->GetItemCount()) {
+		return false;
+	}
+
 	wxRect itemRect;
 	if (!m_pListCtrl->GetItemRect(0, itemRect))
 		return false;
@@ -1270,27 +1280,23 @@ bool CListCtrlDropTarget::IsBottomScroll(wxPoint p) const
 
 void CListCtrlDropTarget::OnTimer(wxTimerEvent& /*event*/)
 {
+	if (!m_pListCtrl->GetItemCount()) {
+		return;
+	}
+
 	wxPoint p = wxGetMousePosition();
-#ifdef __WXMSW__
-	wxWindow* ctrl = m_pListCtrl;
-#else
 	wxWindow* ctrl = m_pListCtrl->GetMainWindow();
-#endif
 	p = ctrl->ScreenToClient(p);
 
-	if (IsTopScroll(p))
-	{
+	if (IsTopScroll(p)) {
 		int top = m_pListCtrl->GetTopItem();
 		m_pListCtrl->EnsureVisible(top - 1);
 	}
-	else if (IsBottomScroll(p))
-	{
+	else if (IsBottomScroll(p)) {
 		int top = m_pListCtrl->GetTopItem();
 		m_pListCtrl->EnsureVisible(top + m_pListCtrl->GetCountPerPage());
 	}
-	else
-	{
-		m_timer.Stop();
+	else {
 		return;
 	}
 
@@ -1299,6 +1305,21 @@ void CListCtrlDropTarget::OnTimer(wxTimerEvent& /*event*/)
 	if (m_count < 90)
 		++m_count;
 	m_timer.Start(100 - m_count, true);
+}
+
+wxDragResult CListCtrlDropTarget::FixupDragResult(wxDragResult res)
+{
+#ifdef __WXMAC__
+	if (res == wxDragNone && wxGetKeyState(WXK_CONTROL)) {
+		res = wxDragCopy;
+	}
+#endif
+
+	if (res == wxDragLink) {
+		res = wxGetKeyState(WXK_CONTROL) ? wxDragCopy : wxDragMove;
+	}
+
+	return res;
 }
 
 BEGIN_EVENT_TABLE(CListCtrlDropTarget, wxEvtHandler)

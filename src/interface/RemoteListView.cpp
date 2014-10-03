@@ -60,6 +60,8 @@ public:
 
 	virtual wxDragResult OnData(wxCoord x, wxCoord y, wxDragResult def)
 	{
+		def = FixupDragResult(def);
+
 		if (def == wxDragError ||
 			def == wxDragNone ||
 			def == wxDragCancel)
@@ -238,7 +240,7 @@ public:
 
 	virtual wxDragResult OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		CListCtrlDropTarget::OnDragOver(x, y, def);
+		def = CListCtrlDropTarget::OnDragOver(x, y, def);
 
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -248,8 +250,7 @@ public:
 			return def;
 		}
 
-		if (!m_pRemoteListView->m_pDirectoryListing)
-		{
+		if (!m_pRemoteListView->m_pDirectoryListing) {
 			ClearDropHighlight();
 			return wxDragNone;
 		}
@@ -276,7 +277,7 @@ public:
 
 	virtual wxDragResult OnEnter(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		CListCtrlDropTarget::OnEnter(x, y, def);
+		def = CListCtrlDropTarget::OnEnter(x, y, def);
 		return OnDragOver(x, y, def);
 	}
 
@@ -1525,28 +1526,29 @@ void CRemoteListView::OnMenuDelete(wxCommandEvent&)
 
 void CRemoteListView::OnMenuRename(wxCommandEvent&)
 {
-	if (!m_pState->IsRemoteIdle())
-	{
+	if (GetEditControl()) {
+		GetEditControl()->SetFocus();
+		return;
+	}
+
+	if (!m_pState->IsRemoteIdle()) {
 		wxBell();
 		return;
 	}
 
 	int item = GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-	if (item <= 0)
-	{
+	if (item <= 0) {
 		wxBell();
 		return;
 	}
 
-	if (GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) != -1)
-	{
+	if (GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) != -1) {
 		wxBell();
 		return;
 	}
 
 	int index = GetItemIndex(item);
-	if (index == -1 || m_fileData[index].comparison_flags == fill)
-	{
+	if (index == -1 || m_fileData[index].comparison_flags == fill) {
 		wxBell();
 		return;
 	}
@@ -2325,11 +2327,9 @@ void CRemoteListView::OnBeginDrag(wxListEvent&)
 #endif
 }
 
-
 void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 {
-	if (!m_pState->IsRemoteConnected() || !m_pDirectoryListing)
-	{
+	if (!m_pState->IsRemoteConnected() || !m_pDirectoryListing) {
 		wxBell();
 		return;
 	}
@@ -2337,10 +2337,8 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 	long item = -1;
 
 	std::list<CDirentry> selected_item_list;
-	while ((item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1)
-	{
-		if (!item)
-		{
+	while ((item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1) {
+		if (!item) {
 			wxBell();
 			return;
 		}
@@ -2350,8 +2348,7 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 			continue;
 
 		const CDirentry& entry = (*m_pDirectoryListing)[index];
-		if (entry.is_dir())
-		{
+		if (entry.is_dir()) {
 			wxBell();
 			return;
 		}
@@ -2360,16 +2357,13 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 	}
 
 	CEditHandler* pEditHandler = CEditHandler::Get();
-	if (!pEditHandler)
-	{
+	if (!pEditHandler) {
 		wxBell();
 		return;
 	}
 
-
 	const wxString& localDir = pEditHandler->GetLocalDirectory();
-	if (localDir.empty())
-	{
+	if (localDir.empty()) {
 		wxMessageBoxEx(_("Could not get temporary directory to download file into."), _("Cannot edit file"), wxICON_STOP);
 		return;
 	}
@@ -2377,14 +2371,12 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 	const CServerPath path = m_pDirectoryListing->path;
 	const CServer server = *m_pState->GetServer();
 
-	if (selected_item_list.empty())
-	{
+	if (selected_item_list.empty()) {
 		wxBell();
 		return;
 	}
 
-	if (selected_item_list.size() > 10)
-	{
+	if (selected_item_list.size() > 10) {
 
 		CConditionalDialog dlg(this, CConditionalDialog::many_selected_for_edit, CConditionalDialog::yesno);
 		dlg.SetTitle(_("Confirmation needed"));
@@ -2394,105 +2386,8 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 			return;
 	}
 
-	for (std::list<CDirentry>::const_iterator iter = selected_item_list.begin(); iter != selected_item_list.end(); ++iter)
-	{
-		const CDirentry& entry = *iter;
-
-		bool dangerous = false;
-		bool program_exists = false;
-		wxString cmd = pEditHandler->CanOpen(CEditHandler::remote, entry.name, dangerous, program_exists);
-		if (cmd.empty())
-		{
-			CNewAssociationDialog dlg(this);
-			if (!dlg.Run(entry.name))
-				continue;
-			cmd = pEditHandler->CanOpen(CEditHandler::remote, entry.name, dangerous, program_exists);
-			if (cmd.empty())
-			{
-				wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nNo program has been associated on your system with this file type."), entry.name), _("Opening failed"), wxICON_EXCLAMATION);
-				continue;
-			}
-		}
-		if (!program_exists)
-		{
-			wxString msg = wxString::Format(_("The file '%s' cannot be opened:\nThe associated program (%s) could not be found.\nPlease check your filetype associations."), entry.name, cmd);
-			wxMessageBoxEx(msg, _("Cannot edit file"), wxICON_EXCLAMATION);
-			continue;
-		}
-		if (dangerous)
-		{
-			int res = wxMessageBoxEx(_("The selected file would be executed directly.\nThis can be dangerous and damage your system.\nDo you really want to continue?"), _("Dangerous filetype"), wxICON_EXCLAMATION | wxYES_NO);
-			if (res != wxYES)
-			{
-				wxBell();
-				continue;
-			}
-		}
-
-		CEditHandler::fileState state = pEditHandler->GetFileState(entry.name, path, server);
-		switch (state)
-		{
-		case CEditHandler::download:
-		case CEditHandler::upload:
-		case CEditHandler::upload_and_remove:
-		case CEditHandler::upload_and_remove_failed:
-			wxMessageBoxEx(_("A file with that name is already being transferred."), _("Cannot view/edit selected file"), wxICON_EXCLAMATION);
-			continue;
-		case CEditHandler::removing:
-			if (!pEditHandler->Remove(entry.name, path, server))
-			{
-				wxMessageBoxEx(_("A file with that name is still being edited. Please close it and try again."), _("Selected file is already opened"), wxICON_EXCLAMATION);
-				continue;
-			}
-			break;
-		case CEditHandler::edit:
-			{
-				wxDialogEx dlg;
-				if (!dlg.Load(this, _T("ID_EDITEXISTING")))
-				{
-					wxBell();
-					continue;
-				}
-				dlg.SetChildLabel(XRCID("ID_FILENAME"), entry.name);
-				if (dlg.ShowModal() != wxID_OK)
-				{
-					wxBell();
-					continue;
-				}
-
-				if (XRCCTRL(dlg, "ID_REOPEN", wxRadioButton)->GetValue())
-				{
-					pEditHandler->StartEditing(entry.name, path, server);
-					continue;
-				}
-				else
-				{
-					if (!pEditHandler->Remove(entry.name, path, server))
-					{
-						wxMessageBoxEx(_("The selected file is still opened in some other program, please close it."), _("Selected file is still being edited"), wxICON_EXCLAMATION);
-						continue;
-					}
-				}
-			}
-			break;
-		default:
-			break;
-		}
-
-		wxString file = entry.name;
-		if (!pEditHandler->AddFile(CEditHandler::remote, file, path, server))
-		{
-			wxFAIL;
-			wxBell();
-			continue;
-		}
-
-		wxString localFile;
-		CLocalPath localPath(file, &localFile);
-
-		m_pQueue->QueueFile(false, true, entry.name, (localFile != entry.name) ? localFile : wxString(),
-			localPath, path, server, entry.size, CEditHandler::remote, QueuePriority::high);
-		m_pQueue->QueueFile_Finish(true);
+	for (auto const& entry : selected_item_list) {
+		pEditHandler->Edit(CEditHandler::remote, entry.name, path, server, entry.size, this);
 	}
 }
 

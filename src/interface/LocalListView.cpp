@@ -58,13 +58,12 @@ public:
 
 	virtual wxDragResult OnData(wxCoord x, wxCoord y, wxDragResult def)
 	{
+		def = CListCtrlDropTarget::FixupDragResult(def);
+
 		if (def == wxDragError ||
 			def == wxDragNone ||
 			def == wxDragCancel)
 			return def;
-		if( def == wxDragLink ) {
-			def = wxDragCopy;
-		}
 
 		if (m_pLocalListView->m_fileData.empty())
 			return wxDragError;
@@ -185,7 +184,7 @@ public:
 
 	virtual wxDragResult OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		CListCtrlDropTarget::OnDragOver(x, y, def);
+		def = CListCtrlDropTarget::OnDragOver(x, y, def);
 
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -219,9 +218,6 @@ public:
 		if (!dir.IsWriteable())
 			return wxDragNone;
 
-		if (def == wxDragLink)
-			def = wxDragCopy;
-
 		return def;
 	}
 
@@ -233,7 +229,7 @@ public:
 
 	virtual wxDragResult OnEnter(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		CListCtrlDropTarget::OnEnter(x, y, def);
+		def = CListCtrlDropTarget::OnEnter(x, y, def);
 		return OnDragOver(x, y, def);
 	}
 
@@ -990,22 +986,24 @@ void CLocalListView::OnMenuDelete(wxCommandEvent& event)
 
 void CLocalListView::OnMenuRename(wxCommandEvent& event)
 {
+	if (GetEditControl()) {
+		GetEditControl()->SetFocus();
+		return;
+	}
+
 	int item = GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
-	if (item < 0 || (!item && m_hasParent))
-	{
+	if (item < 0 || (!item && m_hasParent)) {
 		wxBell();
 		return;
 	}
 
-	if (GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) != -1)
-	{
+	if (GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) != -1) {
 		wxBell();
 		return;
 	}
 
 	CLocalFileData *data = GetData(item);
-	if (!data || data->comparison_flags == fill)
-	{
+	if (!data || data->comparison_flags == fill) {
 		wxBell();
 		return;
 	}
@@ -1638,21 +1636,17 @@ void CLocalListView::OnMenuEdit(wxCommandEvent& event)
 	CServer server;
 	CServerPath path;
 
-	if (!m_pState->GetServer())
-	{
-		if (COptions::Get()->GetOptionVal(OPTION_EDIT_TRACK_LOCAL))
-		{
+	if (!m_pState->GetServer()) {
+		if (COptions::Get()->GetOptionVal(OPTION_EDIT_TRACK_LOCAL)) {
 			wxMessageBoxEx(_("Cannot edit file, not connected to any server."), _("Editing failed"), wxICON_EXCLAMATION);
 			return;
 		}
 	}
-	else
-	{
+	else {
 		server = *m_pState->GetServer();
 
 		path = m_pState->GetRemotePath();
-		if (path.empty())
-		{
+		if (path.empty()) {
 			wxMessageBoxEx(_("Cannot edit file, remote path unknown."), _("Editing failed"), wxICON_EXCLAMATION);
 			return;
 		}
@@ -1661,10 +1655,8 @@ void CLocalListView::OnMenuEdit(wxCommandEvent& event)
 	std::list<CLocalFileData> selected_item_list;
 
 	long item = -1;
-	while ((item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1)
-	{
-		if (!item && m_hasParent)
-		{
+	while ((item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1) {
+		if (!item && m_hasParent) {
 			wxBell();
 			return;
 		}
@@ -1673,8 +1665,7 @@ void CLocalListView::OnMenuEdit(wxCommandEvent& event)
 		if (!data)
 			continue;
 
-		if (data->dir)
-		{
+		if (data->dir) {
 			wxBell();
 			return;
 		}
@@ -1687,15 +1678,12 @@ void CLocalListView::OnMenuEdit(wxCommandEvent& event)
 
 	CEditHandler* pEditHandler = CEditHandler::Get();
 
-	if (selected_item_list.empty())
-	{
+	if (selected_item_list.empty()) {
 		wxBell();
 		return;
 	}
 
-	if (selected_item_list.size() > 10)
-	{
-
+	if (selected_item_list.size() > 10) {
 		CConditionalDialog dlg(this, CConditionalDialog::many_selected_for_edit, CConditionalDialog::yesno);
 		dlg.SetTitle(_("Confirmation needed"));
 		dlg.AddText(_("You have selected more than 10 files for editing, do you really want to continue?"));
@@ -1704,69 +1692,9 @@ void CLocalListView::OnMenuEdit(wxCommandEvent& event)
 			return;
 	}
 
-	for (std::list<CLocalFileData>::const_iterator data = selected_item_list.begin(); data != selected_item_list.end(); ++data)
-	{
-		wxFileName fn(m_dir, data->name);
-
-		bool dangerous = false;
-		bool program_exists = false;
-		wxString cmd = pEditHandler->CanOpen(CEditHandler::local, fn.GetFullPath(), dangerous, program_exists);
-		if (cmd.empty())
-		{
-			CNewAssociationDialog dlg(this);
-			if (!dlg.Run(fn.GetFullName()))
-				continue;
-			cmd = pEditHandler->CanOpen(CEditHandler::local, fn.GetFullPath(), dangerous, program_exists);
-			if (cmd.empty())
-			{
-				wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nNo program has been associated on your system with this file type."), fn.GetFullPath()), _("Opening failed"), wxICON_EXCLAMATION);
-				continue;
-			}
-		}
-		if (!program_exists)
-		{
-			wxString msg = wxString::Format(_("The file '%s' cannot be opened:\nThe associated program (%s) could not be found.\nPlease check your filetype associations."), fn.GetFullPath(), cmd);
-			wxMessageBoxEx(msg, _("Cannot edit file"), wxICON_EXCLAMATION);
-			continue;
-		}
-		if (dangerous)
-		{
-			int res = wxMessageBoxEx(_("The selected file would be executed directly.\nThis can be dangerous and damage your system.\nDo you really want to continue?"), _("Dangerous filetype"), wxICON_EXCLAMATION | wxYES_NO);
-			if (res != wxYES)
-			{
-				wxBell();
-				continue;
-			}
-		}
-
-		CEditHandler::fileState state = pEditHandler->GetFileState(fn.GetFullPath());
-		switch (state)
-		{
-		case CEditHandler::upload:
-		case CEditHandler::upload_and_remove:
-			wxMessageBoxEx(_("A file with that name is already being transferred."), _("Cannot view/edit selected file"), wxICON_EXCLAMATION);
-			continue;
-		case CEditHandler::edit:
-			{
-				int res = wxMessageBoxEx(wxString::Format(_("A file with that name is already being edited. Do you want to reopen '%s'?"), fn.GetFullPath()), _("Selected file already being edited"), wxICON_QUESTION | wxYES_NO);
-				if (res != wxYES)
-				{
-					wxBell();
-					continue;
-				}
-				pEditHandler->StartEditing(fn.GetFullPath());
-				continue;
-			}
-		default:
-			break;
-		}
-
-		wxString file = fn.GetFullPath();
-		if (!pEditHandler->AddFile(CEditHandler::local, file, path, server))
-		{
-			wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nThe associated command failed"), fn.GetFullPath()), _("Opening failed"), wxICON_EXCLAMATION);
-			continue;
-		}
+	for (auto const& entry : selected_item_list) {
+		wxFileName fn(m_dir, entry.name);
+		pEditHandler->Edit(CEditHandler::local, fn.GetFullPath(), path, server, entry.size, this);
 	}
 }
 
@@ -1809,7 +1737,6 @@ void CLocalListView::OnMenuOpen(wxCommandEvent& event)
 	}
 
 	if (selected_item_list.size() > 10) {
-
 		CConditionalDialog dlg(this, CConditionalDialog::many_selected_for_edit, CConditionalDialog::yesno);
 		dlg.SetTitle(_("Confirmation needed"));
 		dlg.AddText(_("You have selected more than 10 files or directories to open, do you really want to continue?"));

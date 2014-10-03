@@ -54,9 +54,8 @@ public:
 	void CancelLabelEdit();
 	void SetLabelEditBlock(bool block);
 
-#ifndef __WXMSW__
-	wxWindow* GetMainWindow() const;
-#endif
+	wxWindow* GetMainWindow();
+	wxWindow const* GetMainWindow() const;
 
 	bool HasSelection() const;
 
@@ -160,9 +159,11 @@ public:
 
 	virtual wxDragResult OnEnter(wxCoord x, wxCoord y, wxDragResult def);
 
-	virtual void DisplayDropHighlight(wxPoint) = 0;
+	virtual void DisplayDropHighlight(wxPoint) {}
 
 protected:
+	wxDragResult FixupDragResult(wxDragResult res);
+
 	bool IsScroll(wxPoint p) const;
 	bool IsTopScroll(wxPoint p) const;
 	bool IsBottomScroll(wxPoint p) const;

@@ -63,6 +63,8 @@ protected:
 	CFileZillaEnginePrivate(CFileZillaEngineContext& engine_context);
 	virtual ~CFileZillaEnginePrivate();
 
+	int CheckPreconditions(CCommand const& command);
+
 	// Command handlers, only called by CFileZillaEngine::Command
 	int Connect(const CConnectCommand &command);
 	int Disconnect(const CDisconnectCommand &command);
@@ -102,9 +104,9 @@ protected:
 	CServerPath m_lastListDir;
 	CMonotonicTime m_lastListTime;
 
-	CControlSocket *m_pControlSocket{};
+	std::unique_ptr<CControlSocket> m_pControlSocket;
 
-	CCommand *m_pCurrentCommand{};
+	std::unique_ptr<CCommand> m_pCurrentCommand;
 
 	// Protect access to these three with notification_mutex_
 	std::list<CNotification*> m_NotificationList;
@@ -130,7 +132,7 @@ protected:
 	{
 		CServer server;
 		wxDateTime time;
-		bool critical;
+		bool critical{};
 	};
 	static std::list<t_failedLogins> m_failedLogins;
 	int m_retryCount{};

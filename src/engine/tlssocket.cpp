@@ -27,39 +27,13 @@ CTlsSocket::CTlsSocket(CSocketEventHandler* pEvtHandler, CSocket* pSocket, CCont
 	, CBackend(pEvtHandler)
 	, CSocketEventSource(pOwner->GetEngine()->socket_event_dispatcher_)
 	, m_pOwner(pOwner)
+	, m_pSocket(pSocket)
 {
-	wxASSERT(m_pSocket);
-	m_pSocket = pSocket;
+	wxASSERT(pSocket);
 	m_pSocketBackend = new CSocketBackend(this, m_pSocket, m_pOwner->GetEngine()->GetRateLimiter());
-
-	m_session = 0;
-	m_initialized = false;
-	m_certCredentials = 0;
-
-	m_canReadFromSocket = true;
-	m_canWriteToSocket = true;
-	m_canCheckCloseSocket = false;
-
-	m_canTriggerRead = false;
-	m_canTriggerWrite = true;
-
-	m_tlsState = noconn;
-
-	m_lastReadFailed = true;
-	m_lastWriteFailed = false;
-	m_writeSkip = 0;
-
-	m_peekData = 0;
-	m_peekDataLen = 0;
-
-	m_socketClosed = false;
 
 	m_implicitTrustedCert.data = 0;
 	m_implicitTrustedCert.size = 0;
-
-	m_shutdown_requested = false;
-
-	m_socket_eof = false;
 }
 
 CTlsSocket::~CTlsSocket()
@@ -73,24 +47,21 @@ bool CTlsSocket::Init()
 	// This function initializes GnuTLS
 	m_initialized = true;
 	int res = gnutls_global_init();
-	if (res)
-	{
+	if (res) {
 		LogError(res, _T("gnutls_global_init"));
 		Uninit();
 		return false;
 	}
 
 #if TLSDEBUG
-	if (!pLoggingControlSocket)
-	{
+	if (!pLoggingControlSocket) {
 		pLoggingControlSocket = m_pOwner;
 		gnutls_global_set_log_function(log_func);
 		gnutls_global_set_log_level(99);
 	}
 #endif
 	res = gnutls_certificate_allocate_credentials(&m_certCredentials);
-	if (res < 0)
-	{
+	if (res < 0) {
 		LogError(res, _T("gnutls_certificate_allocate_credentials"));
 		Uninit();
 		return false;
@@ -109,8 +80,7 @@ bool CTlsSocket::Init()
 bool CTlsSocket::InitSession()
 {
 	int res = gnutls_init(&m_session, GNUTLS_CLIENT);
-	if (res)
-	{
+	if (res) {
 		LogError(res, _T("gnutls_init"));
 		Uninit();
 		return false;
@@ -123,8 +93,7 @@ bool CTlsSocket::InitSession()
 	gnutls_db_set_cache_expiration(m_session, 100000000);
 
 	res = gnutls_priority_set_direct(m_session, ciphers, 0);
-	if (res)
-	{
+	if (res) {
 		LogError(res, _T("gnutls_priority_set_direct"));
 		Uninit();
 		return false;
@@ -146,19 +115,17 @@ void CTlsSocket::Uninit()
 {
 	UninitSession();
 
-	if (m_certCredentials)
-	{
+	if (m_certCredentials) {
 		gnutls_certificate_free_credentials(m_certCredentials);
 		m_certCredentials = 0;
 	}
 
-	if (m_initialized)
-	{
+	if (m_initialized) {
 		m_initialized = false;
 		gnutls_global_deinit();
 	}
 
-	m_tlsState = noconn;
+	m_tlsState = TlsState::noconn;
 
 	delete [] m_peekData;
 	m_peekData = 0;
@@ -176,8 +143,7 @@ void CTlsSocket::Uninit()
 
 void CTlsSocket::UninitSession()
 {
-	if (m_session)
-	{
+	if (m_session) {
 		gnutls_deinit(m_session);
 		m_session = 0;
 	}
@@ -273,11 +239,10 @@ ssize_t CTlsSocket::PushFunction(const void* data, size_t len)
 
 ssize_t CTlsSocket::PullFunction(void* data, size_t len)
 {
-#if 1
-	if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PullFunction(%d)"),  (int)len);
+#if TLSDEBUG
+	m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PullFunction(%d)"),  (int)len);
 #endif
-	if (!m_pSocketBackend)
-	{
+	if (!m_pSocketBackend) {
 		gnutls_transport_set_errno(m_session, 0);
 		return -1;
 	}
@@ -285,22 +250,17 @@ ssize_t CTlsSocket::PullFunction(void* data, size_t len)
 	if (m_socketClosed)
 		return 0;
 
-	if (!m_canReadFromSocket)
-	{
+	if (!m_canReadFromSocket) {
 		gnutls_transport_set_errno(m_session, EAGAIN);
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PullFunction cannot read"));
 		return -1;
 	}
 
 	int error;
 	int read = m_pSocketBackend->Read(data, len, error);
-	if (read < 0)
-	{
+	if (read < 0) {
 		m_canReadFromSocket = false;
 		if (error == EAGAIN) {
-			if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PullFunction EAGAIN"));
-			if (m_canCheckCloseSocket && !m_pSocketBackend->IsWaiting(CRateLimiter::inbound))
-			{
+			if (m_canCheckCloseSocket && !m_pSocketBackend->IsWaiting(CRateLimiter::inbound)) {
 				CSocketEvent *evt = new CSocketEvent(this, m_pSocketBackend, CSocketEvent::close);
 				CSocketEventSource::dispatcher_.SendEvent(evt);
 			}
@@ -310,28 +270,24 @@ ssize_t CTlsSocket::PullFunction(void* data, size_t len)
 		return -1;
 	}
 
-	if (m_canCheckCloseSocket)
-	{
+	if (m_canCheckCloseSocket) {
 		CSocketEvent *evt = new CSocketEvent(this, m_pSocketBackend, CSocketEvent::close);
 		CSocketEventSource::dispatcher_.SendEvent(evt);
 	}
 
 	if (!read) {
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PullFunction eof"));
 		m_socket_eof = true;
 	}
 
 #if TLSDEBUG
 	m_pOwner->LogMessage(MessageType::Debug_Debug, _T("  returning %d"), read);
 #endif
-	if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PullFunction ret %d"), read);
 
 	return read;
 }
 
 void CTlsSocket::OnSocketEvent(CSocketEvent& event)
 {
-	if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket socket event %d"), event.GetType());
 	wxASSERT(m_pSocket);
 	if (!m_session)
 		return;
@@ -379,7 +335,7 @@ void CTlsSocket::OnSocketEvent(CSocketEvent& event)
 
 void CTlsSocket::OnRead()
 {
-	if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::OnRead()"));
+	m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::OnRead()"));
 
 	m_canReadFromSocket = true;
 
@@ -388,15 +344,15 @@ void CTlsSocket::OnRead()
 
 	const int direction = gnutls_record_get_direction(m_session);
 	if (direction && !m_lastReadFailed) {
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _T("CTlsSocket::Postponing read"));
+		m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::Postponing read"));
 		return;
 	}
 
-	if (m_tlsState == handshake)
+	if (m_tlsState == TlsState::handshake)
 		ContinueHandshake();
-	if (m_tlsState == closing)
+	if (m_tlsState == TlsState::closing)
 		ContinueShutdown();
-	else if (m_tlsState == conn)
+	else if (m_tlsState == TlsState::conn)
 	{
 		CheckResumeFailedReadWrite();
 		TriggerEvents();
@@ -416,11 +372,11 @@ void CTlsSocket::OnSend()
 	if (!direction && !m_lastWriteFailed)
 		return;
 
-	if (m_tlsState == handshake)
+	if (m_tlsState == TlsState::handshake)
 		ContinueHandshake();
-	else if (m_tlsState == closing)
+	else if (m_tlsState == TlsState::closing)
 		ContinueShutdown();
-	else if (m_tlsState == conn)
+	else if (m_tlsState == TlsState::conn)
 	{
 		CheckResumeFailedReadWrite();
 		TriggerEvents();
@@ -461,7 +417,7 @@ int CTlsSocket::Handshake(const CTlsSocket* pPrimarySocket, bool try_resume)
 	m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("CTlsSocket::Handshake()"));
 	wxASSERT(m_session);
 
-	m_tlsState = handshake;
+	m_tlsState = TlsState::handshake;
 
 	wxString hostname;
 
@@ -506,7 +462,7 @@ int CTlsSocket::ContinueHandshake()
 {
 	m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("CTlsSocket::ContinueHandshake()"));
 	wxASSERT(m_session);
-	wxASSERT(m_tlsState == handshake);
+	wxASSERT(m_tlsState == TlsState::handshake);
 
 	int res = gnutls_handshake(m_session);
 	while (res == GNUTLS_E_AGAIN || res == GNUTLS_E_INTERRUPTED)
@@ -556,19 +512,15 @@ int CTlsSocket::ContinueHandshake()
 
 int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 {
-	if (m_tlsState == handshake || m_tlsState == verifycert)
-	{
+	if (m_tlsState == TlsState::handshake || m_tlsState == TlsState::verifycert) {
 		error = EAGAIN;
 		return -1;
 	}
-	else if (m_tlsState != conn)
-	{
+	else if (m_tlsState != TlsState::conn) {
 		error = ENOTCONN;
 		return -1;
 	}
-	else if (m_lastReadFailed)
-	{
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket returning last read failed"));
+	else if (m_lastReadFailed) {
 		error = EAGAIN;
 		return -1;
 	}
@@ -576,7 +528,6 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 	if (m_peekDataLen)
 	{
 		unsigned int min = wxMin(len, m_peekDataLen);
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket returning peeked data %d %d %d"), m_peekDataLen, len, min);
 		memcpy(buffer, m_peekData, min);
 
 		if (min == m_peekDataLen)
@@ -604,14 +555,10 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 		m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("CTlsSocket spurious EAGAIN in gnutls_record_recv. eof state: %d"), m_socket_eof);
 		res = gnutls_record_recv(m_session, buffer, len);
 	}
-	if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket gnutls_record_recv returned %d"), res);
-	if (res >= 0)
-	{
+	if (res >= 0) {
 		if (res > 0)
 			TriggerEvents();
-		else
-		{
-			if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket got bye"));
+		else {
 			// Peer did already initiate a shutdown, reply to it
 			gnutls_bye(m_session, GNUTLS_SHUT_WR);
 			// Note: Theoretically this could return a write error.
@@ -624,13 +571,11 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 		return res;
 	}
 
-	if (res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN)
-	{
+	if (res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) {
 		error = EAGAIN;
 		m_lastReadFailed = true;
 	}
-	else
-	{
+	else {
 		Failure(res, 0, _T("gnutls_record_recv"));
 		error = ECONNABORTED;
 	}
@@ -640,25 +585,21 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 
 int CTlsSocket::Write(const void *buffer, unsigned int len, int& error)
 {
-	if (m_tlsState == handshake || m_tlsState == verifycert)
-	{
+	if (m_tlsState == TlsState::handshake || m_tlsState == TlsState::verifycert) {
 		error = EAGAIN;
 		return -1;
 	}
-	else if (m_tlsState != conn)
-	{
+	else if (m_tlsState != TlsState::conn) {
 		error = ENOTCONN;
 		return -1;
 	}
 
-	if (m_lastWriteFailed)
-	{
+	if (m_lastWriteFailed) {
 		error = EAGAIN;
 		return -1;
 	}
 
-	if (m_writeSkip >= len)
-	{
+	if (m_writeSkip >= len) {
 		m_writeSkip -= len;
 		return len;
 	}
@@ -671,8 +612,7 @@ int CTlsSocket::Write(const void *buffer, unsigned int len, int& error)
 	while ((res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) && m_canWriteToSocket)
 		res = gnutls_record_send(m_session, 0, 0);
 
-	if (res >= 0)
-	{
+	if (res >= 0) {
 		error = 0;
 		int written = res + m_writeSkip;
 		m_writeSkip = 0;
@@ -681,24 +621,20 @@ int CTlsSocket::Write(const void *buffer, unsigned int len, int& error)
 		return written;
 	}
 
-	if (res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN)
-	{
-		if (m_writeSkip)
-		{
+	if (res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) {
+		if (m_writeSkip) {
 			error = 0;
 			int written = m_writeSkip;
 			m_writeSkip = 0;
 			return written;
 		}
-		else
-		{
+		else {
 			error = EAGAIN;
 			m_lastWriteFailed = true;
 			return -1;
 		}
 	}
-	else
-	{
+	else {
 		Failure(res, 0, _T("gnutls_record_send"));
 		error = ECONNABORTED;
 		return -1;
@@ -707,20 +643,16 @@ int CTlsSocket::Write(const void *buffer, unsigned int len, int& error)
 
 void CTlsSocket::TriggerEvents()
 {
-	if (m_tlsState != conn)
+	if (m_tlsState != TlsState::conn)
 		return;
 
-	if (m_canTriggerRead)
-	{
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket triggering read"));
+	if (m_canTriggerRead) {
 		CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::read);
 		CSocketEventSource::dispatcher_.SendEvent(evt);
 		m_canTriggerRead = false;
 	}
 
-	if (m_canTriggerWrite)
-	{
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket triggering read"));
+	if (m_canTriggerWrite) {
 		CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::write);
 		CSocketEventSource::dispatcher_.SendEvent(evt);
 		m_canTriggerWrite = false;
@@ -729,9 +661,7 @@ void CTlsSocket::TriggerEvents()
 
 void CTlsSocket::CheckResumeFailedReadWrite()
 {
-	if (m_lastWriteFailed)
-	{
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket last write failed"));
+	if (m_lastWriteFailed) {
 		int res = GNUTLS_E_AGAIN;
 		while ((res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) && m_canWriteToSocket)
 			res = gnutls_record_send(m_session, 0, 0);
@@ -739,8 +669,7 @@ void CTlsSocket::CheckResumeFailedReadWrite()
 		if (res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN)
 			return;
 
-		if (res < 0)
-		{
+		if (res < 0) {
 			Failure(res, ECONNABORTED);
 			return;
 		}
@@ -749,9 +678,7 @@ void CTlsSocket::CheckResumeFailedReadWrite()
 		m_lastWriteFailed = false;
 		m_canTriggerWrite = true;
 	}
-	if (m_lastReadFailed)
-	{
-		if (m_implicitTrustedCert.size) m_pOwner->LogMessage(MessageType::Error, _("CTlsSocket last read failed"));
+	if (m_lastReadFailed) {
 		wxASSERT(!m_peekData);
 
 		m_peekDataLen = 65536;
@@ -833,13 +760,13 @@ int CTlsSocket::Shutdown()
 {
 	m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("CTlsSocket::Shutdown()"));
 
-	if (m_tlsState == closed)
+	if (m_tlsState == TlsState::closed)
 		return 0;
 
-	if (m_tlsState == closing)
+	if (m_tlsState == TlsState::closing)
 		return EAGAIN;
 
-	if (m_tlsState == handshake || m_tlsState == verifycert)
+	if (m_tlsState == TlsState::handshake || m_tlsState == TlsState::verifycert)
 	{
 		// Shutdown during handshake is not a good idea.
 		m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("Shutdown during handshake, postponing"));
@@ -847,17 +774,17 @@ int CTlsSocket::Shutdown()
 		return EAGAIN;
 	}
 
-	if (m_tlsState != conn)
+	if (m_tlsState != TlsState::conn)
 		return ECONNABORTED;
 
-	m_tlsState = closing;
+	m_tlsState = TlsState::closing;
 
 	int res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
 	while ((res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) && m_canWriteToSocket)
 		res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
 	if (!res)
 	{
-		m_tlsState = closed;
+		m_tlsState = TlsState::closed;
 		return 0;
 	}
 
@@ -877,7 +804,7 @@ void CTlsSocket::ContinueShutdown()
 		res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
 	if (!res)
 	{
-		m_tlsState = closed;
+		m_tlsState = TlsState::closed;
 
 		CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::close);
 		CSocketEventSource::dispatcher_.SendEvent(evt);
@@ -891,7 +818,7 @@ void CTlsSocket::ContinueShutdown()
 
 void CTlsSocket::TrustCurrentCert(bool trusted)
 {
-	if (m_tlsState != verifycert)
+	if (m_tlsState != TlsState::verifycert)
 	{
 		m_pOwner->LogMessage(MessageType::Debug_Warning, _T("TrustCurrentCert called at wrong time."));
 		return;
@@ -899,13 +826,13 @@ void CTlsSocket::TrustCurrentCert(bool trusted)
 
 	if (trusted)
 	{
-		m_tlsState = conn;
+		m_tlsState = TlsState::conn;
 
 		if (m_lastWriteFailed)
 			m_lastWriteFailed = false;
 		CheckResumeFailedReadWrite();
 
-		if (m_tlsState == conn)
+		if (m_tlsState == TlsState::conn)
 		{
 			CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::connection);
 			CSocketEventSource::dispatcher_.SendEvent(evt);
@@ -1063,12 +990,12 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 
 int CTlsSocket::VerifyCertificate()
 {
-	if (m_tlsState != handshake) {
+	if (m_tlsState != TlsState::handshake) {
 		m_pOwner->LogMessage(MessageType::Debug_Warning, _T("VerifyCertificate called at wrong time"));
 		return FZ_REPLY_ERROR;
 	}
 
-	m_tlsState = verifycert;
+	m_tlsState = TlsState::verifycert;
 
 	if (gnutls_certificate_type_get(m_session) != GNUTLS_CRT_X509) {
 		m_pOwner->LogMessage(MessageType::Error, _("Unsupported certificate type"));
@@ -1114,7 +1041,7 @@ int CTlsSocket::VerifyCertificate()
 
 		TrustCurrentCert(true);
 
-		if (m_tlsState != conn)
+		if (m_tlsState != TlsState::conn)
 			return FZ_REPLY_ERROR;
 		return FZ_REPLY_OK;
 	}
