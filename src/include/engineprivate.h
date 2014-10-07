@@ -68,7 +68,6 @@ protected:
 	// Command handlers, only called by CFileZillaEngine::Command
 	int Connect(const CConnectCommand &command);
 	int Disconnect(const CDisconnectCommand &command);
-	int Cancel(const CCancelCommand &command);
 	int List(const CListCommand &command);
 	int FileTransfer(const CFileTransferCommand &command);
 	int RawCommand(const CRawCommand& command);
@@ -78,11 +77,14 @@ protected:
 	int Rename(const CRenameCommand& command);
 	int Chmod(const CChmodCommand& command);
 
+	void DoCancel();
+
 	int ContinueConnect();
 
 	void operator()(CEventBase const& ev);
 	void OnEngineEvent(EngineNotificationType type);
 	void OnTimer(int timer_id);
+	void OnCommandEvent();
 
 	// General mutex for operations on the engine
 	// Todo: More fine-grained locking, a global mutex isn't nice
@@ -136,11 +138,14 @@ protected:
 	};
 	static std::list<t_failedLogins> m_failedLogins;
 	int m_retryCount{};
-	int m_retryTimer{-1};
+	timer_id m_retryTimer{};
 
 	CRateLimiter& m_rateLimiter;
 	CDirectoryCache& directory_cache_;
 	CPathCache& path_cache_;
 };
+
+struct command_event_type{};
+typedef CEvent<command_event_type> CCommandEvent;
 
 #endif //__FILEZILLAENGINEPRIVATE_H__
