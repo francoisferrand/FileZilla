@@ -30,7 +30,6 @@ public:
 			return;
 		}
 
-
 		CLogmsgNotification *notification = new CLogmsgNotification(nMessageType, std::forward<String>(msg));
 
 		LogToFile(nMessageType, notification->msg);
@@ -83,6 +82,8 @@ private:
 	static wxString m_file;
 
 	static int m_refcount;
+
+	static wxCriticalSection mutex_;
 };
 
 #endif
