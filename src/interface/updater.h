@@ -77,17 +77,18 @@ public:
 
 protected:
 	int Download(wxString const& url, wxString const& local_file = _T(""));
+	int ContinueDownload();
 
 	void AutoRunIfNeeded();
 	bool Run();
 
-	int SendConnectCommand(wxString const& url);
-	int SendTransferCommand(wxString const& url, wxString const& local_file);
+	bool CreateConnectCommand(wxString const& url);
+	bool CreateTransferCommand(wxString const& url, wxString const& local_file);
 
 	wxString GetUrl();
-	void ProcessNotification(CNotification* notification);
-	void ProcessOperation(CNotification* notification);
-	void ProcessData(CNotification* notification);
+	void ProcessNotification(std::unique_ptr<CNotification> && notification);
+	void ProcessOperation(COperationNotification const& operation);
+	void ProcessData(CDataNotification& dataNotification);
 	void ParseData();
 	UpdaterState ProcessFinishedDownload();
 	UpdaterState ProcessFinishedData(bool can_download);
@@ -118,6 +119,8 @@ protected:
 	wxString log_;
 
 	wxTimer update_timer_;
+
+	std::deque<std::unique_ptr<CCommand>> pending_commands_;
 };
 
 #endif //FZ_MANUALUPDATECHECK

@@ -1,13 +1,17 @@
 #include <filezilla.h>
 #include "treectrlex.h"
 
-IMPLEMENT_CLASS(wxTreeCtrlEx, wxNavigationEnabled<wxTreeCtrl>)
+IMPLEMENT_DYNAMIC_CLASS(wxTreeCtrlEx, wxNavigationEnabled<wxTreeCtrl>)
 
 #ifdef __WXMAC__
 BEGIN_EVENT_TABLE(wxTreeCtrlEx, wxNavigationEnabled<wxTreeCtrl>)
 EVT_CHAR(wxTreeCtrlEx::OnChar)
 END_EVENT_TABLE()
 #endif
+
+wxTreeCtrlEx::wxTreeCtrlEx()
+{
+}
 
 wxTreeCtrlEx::wxTreeCtrlEx(wxWindow *parent, wxWindowID id /*=wxID_ANY*/,
 			   const wxPoint& pos /*=wxDefaultPosition*/,
@@ -47,3 +51,75 @@ void wxTreeCtrlEx::OnChar(wxKeyEvent& event)
 }
 #endif
 
+wxTreeItemId wxTreeCtrlEx::GetFirstItem() const
+{
+	wxTreeItemId root = GetRootItem();
+	if (root.IsOk() && GetWindowStyle() & wxTR_HIDE_ROOT) {
+		wxTreeItemIdValue cookie;
+		root = GetFirstChild(root, cookie);
+	}
+
+	return root;
+}
+
+wxTreeItemId wxTreeCtrlEx::GetLastItem() const
+{
+	wxTreeItemId cur = GetRootItem();
+	if (cur.IsOk() && GetWindowStyle() & wxTR_HIDE_ROOT) {
+		cur = GetLastChild(cur);
+	}
+
+	while (cur.IsOk() && HasChildren(cur) && IsExpanded(cur)) {
+		cur = GetLastChild(cur);
+	}
+
+	return cur;
+}
+
+wxTreeItemId wxTreeCtrlEx::GetBottomItem() const
+{
+	wxTreeItemId cur = GetFirstVisibleItem();
+	if (cur) {
+		wxTreeItemId next;
+		while ((next = GetNextVisible(cur)).IsOk()) {
+			cur = next;
+		}
+	}
+	return cur;
+}
+
+wxTreeItemId wxTreeCtrlEx::GetNextItemSimple(wxTreeItemId const& item) const
+{
+	if (item.IsOk() && ItemHasChildren(item) && IsExpanded(item)) {
+		wxTreeItemIdValue cookie;
+		return GetFirstChild(item, cookie);
+	}
+	else {
+		wxTreeItemId cur = item;
+		wxTreeItemId next = GetNextSibling(cur);
+		while (!next.IsOk() && cur.IsOk()) {
+			cur = GetItemParent(cur);
+			if (cur.IsOk()) {
+				next = GetNextSibling(cur);
+			}
+		}
+		return next;
+	}
+}
+
+wxTreeItemId wxTreeCtrlEx::GetPrevItemSimple(wxTreeItemId const& item) const
+{
+	wxTreeItemId cur = GetPrevSibling(item);
+	if (cur.IsOk()) {
+		while (cur.IsOk() && HasChildren(cur) && IsExpanded(cur)) {
+			cur = GetLastChild(cur);
+		}
+	}
+	else {
+		cur = GetItemParent(item);
+		if (cur.IsOk() && cur == GetRootItem() && (GetWindowStyle() & wxTR_HIDE_ROOT)) {
+			cur = wxTreeItemId();
+		}
+	}
+	return cur;
+}

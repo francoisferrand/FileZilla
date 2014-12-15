@@ -1,13 +1,15 @@
 #ifndef __FILEZILLAENGINE_H__
 #define __FILEZILLAENGINE_H__
 
-#include "engineprivate.h"
+#include "commands.h"
 
-class CFileZillaEngine final : public CFileZillaEnginePrivate
+class CFileZillaEngineContext;
+class CFileZillaEnginePrivate;
+class CFileZillaEngine final
 {
 public:
 	CFileZillaEngine(CFileZillaEngineContext& engine_context);
-	virtual ~CFileZillaEngine();
+	~CFileZillaEngine();
 
 	// Initialize the engine. Pass over the event handler that should receive notification
 	// events as defined in notification.h
@@ -22,6 +24,9 @@ public:
 
 	// Cancels the current command
 	int Cancel();
+
+	bool IsBusy() const;
+	bool IsConnected() const;
 
 	// IsActive returns true only if data has been transferred in the
 	// given direction since the last time IsActive was called with
@@ -38,12 +43,14 @@ public:
 	// get the pending notifications event, or you'll either lose notifications
 	// or your memory will fill with pending notifications.
 	// See notification.h for details.
-	CNotification* GetNextNotification();
+	std::unique_ptr<CNotification> GetNextNotification();
 
 	// Sets the reply to an async request, e.g. a file exists request.
 	// See notifiction.h for details.
-	bool IsPendingAsyncRequestReply(CAsyncRequestNotification const* pNotification);
-	bool SetAsyncRequestReply(CAsyncRequestNotification *pNotification);
+	bool IsPendingAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> const& pNotification);
+
+	// Sets the reply to the asynchronous request. Takes ownership of the pointer.
+	bool SetAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> && pNotification);
 
 	// Get a progress update about the current transfer. changed will be set
 	// to true if the data has been updated compared to the last time
@@ -51,6 +58,9 @@ public:
 	bool GetTransferStatus(CTransferStatus &status, bool &changed);
 
 	int CacheLookup(CServerPath const& path, CDirectoryListing& listing);
+
+private:
+	CFileZillaEnginePrivate* const impl_;
 };
 
 #endif

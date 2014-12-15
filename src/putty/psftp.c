@@ -1264,8 +1264,12 @@ int sftp_cmd_ls(struct sftp_command *cmd)
 	/*
 	 * And print them.
 	 */
-	for (i = 0; i < nnames; i++) {
-	    fzprintf(sftpListentry, "%s", ournames[i]->longname);
+	for (i = 0; i < nnames; ++i) {
+	    unsigned long long mtime = 0;
+	    if (ournames[i]->attrs.flags & SSH_FILEXFER_ATTR_ACMODTIME) {
+		mtime = ((unsigned long long)ournames[i]->attrs.mtime.hi << 32) + ournames[i]->attrs.mtime.lo;
+	    }
+	    fzprintf(sftpListentry, "%llu %s", mtime, ournames[i]->longname);
 	    fxp_free_name(ournames[i]);
 	}
 	sfree(ournames);
@@ -2608,8 +2612,8 @@ struct sftp_command *sftp_getcmd(FILE *fp, int mode, int modeflags)
 
     if (!line || !*line) {
 	cmd->obey = sftp_cmd_quit;
-	if ((mode == 0) || (modeflags & 1))
-	    printf("quit\n");
+	//if ((mode == 0) || (modeflags & 1))
+	//    printf("quit\n");
 	return cmd;		       /* eof */
     }
 

@@ -4,10 +4,6 @@
 
 #include <wx/dcclient.h>
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
 #define MAX_LINECOUNT 1000
 #define LINECOUNT_REMOVAL 10
 
@@ -122,9 +118,9 @@ void CStatusView::OnSize(wxSizeEvent &)
 	}
 }
 
-void CStatusView::AddToLog(CLogmsgNotification *pNotification)
+void CStatusView::AddToLog(CLogmsgNotification const& notification)
 {
-	AddToLog(pNotification->msgType, pNotification->msg, wxDateTime::Now());
+	AddToLog(notification.msgType, notification.msg, wxDateTime::Now());
 }
 
 void CStatusView::AddToLog(MessageType messagetype, const wxString& message, const wxDateTime& time)
@@ -395,7 +391,11 @@ void CStatusView::OnContextMenu(wxContextMenuEvent&)
 	if (!pMenu)
 		return;
 
+	pMenu->Check(XRCID("ID_SHOW_DETAILED_LOG"), COptions::Get()->GetOptionVal(OPTION_LOGGING_SHOW_DETAILED_LOGS) != 0);
+
 	PopupMenu(pMenu);
+
+	COptions::Get()->SetOption(OPTION_LOGGING_SHOW_DETAILED_LOGS, pMenu->IsChecked(XRCID("ID_SHOW_DETAILED_LOG")) ? 1 : 0);
 	delete pMenu;
 }
 

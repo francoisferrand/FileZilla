@@ -227,28 +227,45 @@ bool CUpdater::Run()
 
 int CUpdater::Download(wxString const& url, wxString const& local_file)
 {
-	engine_->Execute(CDisconnectCommand());
-	int res = SendConnectCommand(url);
-	if( res == FZ_REPLY_OK ) {
-		res = SendTransferCommand(url, local_file);
+	wxASSERT(pending_commands_.empty());
+	pending_commands_.clear();
+	pending_commands_.emplace_back(new CDisconnectCommand);
+	if (!CreateConnectCommand(url) || !CreateTransferCommand(url, local_file)) {
+		return FZ_REPLY_ERROR;
+	}
+
+	return ContinueDownload();
+}
+
+int CUpdater::ContinueDownload()
+{
+	if (pending_commands_.empty()) {
+		return FZ_REPLY_OK;
+	}
+
+	int res = engine_->Execute(*pending_commands_.front());
+	if (res == FZ_REPLY_OK) {
+		pending_commands_.pop_front();
+		return ContinueDownload();
 	}
 
 	return res;
 }
 
-int CUpdater::SendConnectCommand(wxString const& url)
+bool CUpdater::CreateConnectCommand(wxString const& url)
 {
 	CServer s;
 	CServerPath path;
 	wxString error;
 	if( !s.ParseUrl( url, 0, wxString(), wxString(), error, path ) || (s.GetProtocol() != HTTP && s.GetProtocol() != HTTPS) ) {
-		return FZ_REPLY_ERROR;
+		return false;
 	}
 
-	return engine_->Execute(CConnectCommand(s));
+	pending_commands_.emplace_back(new CConnectCommand(s));
+	return true;
 }
 
-int CUpdater::SendTransferCommand(wxString const& url, wxString const& local_file)
+bool CUpdater::CreateTransferCommand(wxString const& url, wxString const& local_file)
 {
 	CFileTransferCommand::t_transferSettings transferSettings;
 
@@ -256,16 +273,13 @@ int CUpdater::SendTransferCommand(wxString const& url, wxString const& local_fil
 	CServerPath path;
 	wxString error;
 	if( !s.ParseUrl( url, 0, wxString(), wxString(), error, path ) || (s.GetProtocol() != HTTP && s.GetProtocol() != HTTPS) ) {
-		return FZ_REPLY_ERROR;
+		return false;
 	}
 	wxString file = path.GetLastSegment();
 	path = path.GetParent();
 
-	CFileTransferCommand cmd(local_file, path, file, true, transferSettings);
-	int res = engine_->Execute(cmd);
-
-	wxASSERT(res != FZ_REPLY_OK);
-	return res;
+	pending_commands_.emplace_back(new CFileTransferCommand(local_file, path, file, true, transferSettings));
+	return true;
 }
 
 void CUpdater::OnEngineEvent(wxFzEvent& event)
@@ -273,14 +287,13 @@ void CUpdater::OnEngineEvent(wxFzEvent& event)
 	if (!engine_ || engine_ != event.engine_)
 		return;
 
-	CNotification *notification;
+	std::unique_ptr<CNotification> notification;
 	while( (notification = engine_->GetNextNotification()) ) {
-		ProcessNotification(notification);
-		delete notification;
+		ProcessNotification(std::move(notification));
 	}
 }
 
-void CUpdater::ProcessNotification(CNotification* notification)
+void CUpdater::ProcessNotification(std::unique_ptr<CNotification> && notification)
 {
 	if (state_ != UpdaterState::checking && state_ != UpdaterState::newversion_downloading) {
 		return;
@@ -290,14 +303,14 @@ void CUpdater::ProcessNotification(CNotification* notification)
 	{
 	case nId_asyncrequest:
 		{
-			CAsyncRequestNotification* pData = reinterpret_cast<CAsyncRequestNotification *>(notification);
+			auto pData = unique_static_cast<CAsyncRequestNotification>(std::move(notification));
 			if (pData->GetRequestID() == reqId_fileexists) {
-				reinterpret_cast<CFileExistsNotification *>(pData)->overwriteAction = CFileExistsNotification::resume;
+				static_cast<CFileExistsNotification *>(pData.get())->overwriteAction = CFileExistsNotification::resume;
 			}
 			else if (pData->GetRequestID() == reqId_certificate) {
-				CCertificateNotification* pCertNotification = (CCertificateNotification*)pData;
+				auto & certNotification = static_cast<CCertificateNotification &>(*pData.get());
 				if (m_use_internal_rootcert) {
-					auto certs = pCertNotification->GetCertificates();
+					auto certs = certNotification.GetCertificates();
 					if( certs.size() > 1 ) {
 						auto ca = certs.back();
 
@@ -306,27 +319,27 @@ void CUpdater::ProcessNotification(CNotification* notification)
 
 						wxMemoryBuffer updater_root = wxBase64Decode(s_update_cert, wxNO_LEN, wxBase64DecodeMode_SkipWS);
 						if( ca_data_length == updater_root.GetDataLen() && !memcmp(ca_data, updater_root.GetData(), ca_data_length) ) {
-							pCertNotification->m_trusted = true;
+							certNotification.m_trusted = true;
 						}
 					}
 				}
 				else {
-					pCertNotification->m_trusted = true;
+					certNotification.m_trusted = true;
 				}
 			}
-			engine_->SetAsyncRequestReply(pData);
+			engine_->SetAsyncRequestReply(std::move(pData));
 		}
 		break;
 	case nId_data:
-		ProcessData(notification);
+		ProcessData(static_cast<CDataNotification&>(*notification.get()));
 		break;
 	case nId_operation:
-		ProcessOperation(notification);
+		ProcessOperation(static_cast<COperationNotification const&>(*notification.get()));
 		break;
 	case nId_logmsg:
 		{
-			CLogmsgNotification* msg = reinterpret_cast<CLogmsgNotification *>(notification);
-			log_ += msg->msg + _T("\n");
+			auto const& msg = static_cast<CLogmsgNotification const&>(*notification.get());
+			log_ += msg.msg + _T("\n");
 		}
 		break;
 	default:
@@ -377,17 +390,32 @@ UpdaterState CUpdater::ProcessFinishedData(bool can_download)
 
 	return s;
 }
-void CUpdater::ProcessOperation(CNotification* notification)
+
+void CUpdater::ProcessOperation(COperationNotification const& operation)
 {
 	if( state_ != UpdaterState::checking && state_ != UpdaterState::newversion_downloading ) {
 		return;
 	}
 
+	if (pending_commands_.empty()) {
+		SetState(UpdaterState::failed);
+		return;
+	}
+
+
 	UpdaterState s = UpdaterState::failed;
 
-	COperationNotification* operation = reinterpret_cast<COperationNotification*>(notification);
-	if (operation->nReplyCode != FZ_REPLY_OK) {
-		if( state_ != UpdaterState::checking ) {
+	int res = operation.nReplyCode;
+	if (res == FZ_REPLY_OK || (operation.commandId == Command::disconnect && res & FZ_REPLY_DISCONNECTED)) {
+		pending_commands_.pop_front();
+		res = ContinueDownload();
+		if (res == FZ_REPLY_WOULDBLOCK) {
+			return;
+		}
+	}
+
+	if (res != FZ_REPLY_OK) {
+		if (state_ != UpdaterState::checking) {
 			s = UpdaterState::newversion;
 		}
 	}
@@ -464,16 +492,14 @@ wxString CUpdater::GetLocalFile( build const& b, bool allow_existing )
 	return f;
 }
 
-void CUpdater::ProcessData(CNotification* notification)
+void CUpdater::ProcessData(CDataNotification& dataNotification)
 {
 	if( state_ != UpdaterState::checking ) {
 		return;
 	}
 
-	CDataNotification* pData = reinterpret_cast<CDataNotification*>(notification);
-
 	int len;
-	char* data = pData->Detach(len);
+	char* data = dataNotification.Detach(len);
 
 	if( COptions::Get()->GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 4 ) {
 		log_ += wxString::Format(_T("ProcessData %d\n"), len);
@@ -722,6 +748,10 @@ void CUpdater::SetState( UpdaterState s )
 {
 	if( s != state_ ) {
 		state_ = s;
+
+		if (s != UpdaterState::checking && s != UpdaterState::newversion_downloading) {
+			pending_commands_.clear();
+		}
 		build b = version_information_.available_;
 		for (auto const& handler : handlers_ ) {
 			if( handler ) {

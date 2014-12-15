@@ -18,21 +18,17 @@
 #endif
 #include "edithandler.h"
 #include "dragdropmanager.h"
+#include "drop_target_ex.h"
 #include "local_filesys.h"
 #include "filelist_statusbar.h"
 #include "sizeformatting.h"
 #include "timeformatting.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
-
-class CLocalListViewDropTarget : public CListCtrlDropTarget
+class CLocalListViewDropTarget : public CScrollableDropTarget<wxListCtrlEx>
 {
 public:
 	CLocalListViewDropTarget(CLocalListView* pLocalListView)
-		: CListCtrlDropTarget(pLocalListView)
+		: CScrollableDropTarget<wxListCtrlEx>(pLocalListView)
 		, m_pLocalListView(pLocalListView), m_pFileDataObject(new wxFileDataObject()),
 		m_pRemoteDataObject(new CRemoteDataObject())
 	{
@@ -58,7 +54,7 @@ public:
 
 	virtual wxDragResult OnData(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		def = CListCtrlDropTarget::FixupDragResult(def);
+		def = CScrollableDropTarget<wxListCtrlEx>::FixupDragResult(def);
 
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -123,7 +119,7 @@ public:
 
 	virtual bool OnDrop(wxCoord x, wxCoord y)
 	{
-		CListCtrlDropTarget::OnDrop(x, y);
+		CScrollableDropTarget<wxListCtrlEx>::OnDrop(x, y);
 		ClearDropHighlight();
 
 		if (m_pLocalListView->m_fileData.empty())
@@ -132,9 +128,10 @@ public:
 		return true;
 	}
 
-	virtual void DisplayDropHighlight(wxPoint point)
+	virtual int DisplayDropHighlight(wxPoint point)
 	{
 		DoDisplayDropHighlight(point);
+		return -1;
 	}
 
 	virtual wxString DoDisplayDropHighlight(wxPoint point)
@@ -184,7 +181,7 @@ public:
 
 	virtual wxDragResult OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		def = CListCtrlDropTarget::OnDragOver(x, y, def);
+		def = CScrollableDropTarget<wxListCtrlEx>::OnDragOver(x, y, def);
 
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -223,13 +220,13 @@ public:
 
 	virtual void OnLeave()
 	{
-		CListCtrlDropTarget::OnLeave();
+		CScrollableDropTarget<wxListCtrlEx>::OnLeave();
 		ClearDropHighlight();
 	}
 
 	virtual wxDragResult OnEnter(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		def = CListCtrlDropTarget::OnEnter(x, y, def);
+		def = CScrollableDropTarget<wxListCtrlEx>::OnEnter(x, y, def);
 		return OnDragOver(x, y, def);
 	}
 
@@ -1020,10 +1017,8 @@ void CLocalListView::OnKeyDown(wxKeyEvent& event)
 #endif
 
 	const int code = event.GetKeyCode();
-	if (code == WXK_DELETE || code == WXK_NUMPAD_DELETE)
-	{
-		if (GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) == -1)
-		{
+	if (code == WXK_DELETE || code == WXK_NUMPAD_DELETE) {
+		if (GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) == -1) {
 			wxBell();
 			return;
 		}
@@ -1031,21 +1026,22 @@ void CLocalListView::OnKeyDown(wxKeyEvent& event)
 		wxCommandEvent tmp;
 		OnMenuDelete(tmp);
 	}
-	else if (code == WXK_F2)
-	{
+	else if (code == WXK_F2) {
 		wxCommandEvent tmp;
 		OnMenuRename(tmp);
 	}
-	else if (code == WXK_RIGHT && event.GetModifiers() == CursorModifierKey)
-	{
+	else if (code == WXK_RIGHT && event.GetModifiers() == CursorModifierKey) {
 		wxListEvent evt;
 		evt.m_itemIndex = GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_FOCUSED);
 		OnItemActivated(evt);
 	}
-	else if (code == WXK_DOWN && event.GetModifiers() == CursorModifierKey)
-	{
+	else if (code == WXK_DOWN && event.GetModifiers() == CursorModifierKey) {
 		wxCommandEvent cmdEvent;
 		OnMenuUpload(cmdEvent);
+	}
+	else if (code == 'N' && event.GetModifiers() == (wxMOD_CONTROL | wxMOD_SHIFT)) {
+		wxCommandEvent cmdEvent;
+		OnMenuMkdir(cmdEvent);
 	}
 	else
 		event.Skip();

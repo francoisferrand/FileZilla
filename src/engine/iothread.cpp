@@ -1,5 +1,6 @@
 #include <filezilla.h>
 
+#include "file.h"
 #include "iothread.h"
 
 #include <wx/log.h>
@@ -8,7 +9,6 @@ CIOThread::CIOThread()
 	: wxThread(wxTHREAD_JOINABLE), m_evtHandler(0)
 	, m_read()
 	, m_binary()
-	, m_pFile(0)
 	, m_condition(m_mutex)
 	, m_curAppBuf()
 	, m_curThreadBuf()
@@ -18,7 +18,6 @@ CIOThread::CIOThread()
 	, m_appWaiting()
 	, m_destroyed()
 	, m_wasCarriageReturn()
-	, m_error_description()
 {
 	for (unsigned int i = 0; i < BUFFERCOUNT; ++i) {
 		m_buffers[i] = new char[BUFFERSIZE];
@@ -28,32 +27,46 @@ CIOThread::CIOThread()
 
 CIOThread::~CIOThread()
 {
-	delete m_pFile;
+	Close();
 
 	for (unsigned int i = 0; i < BUFFERCOUNT; i++)
 		delete [] m_buffers[i];
-
-	delete [] m_error_description;
 }
 
-bool CIOThread::Create(wxFile* pFile, bool read, bool binary)
+void CIOThread::Close()
+{
+	if (m_pFile) {
+		// The file might have been preallocated and the transfer stopped before being completed
+		// so always truncate the file to the actually written size before closing it.
+		if (!m_read)
+			m_pFile->Truncate();
+
+		m_pFile.reset();
+	}
+}
+
+bool CIOThread::Create(std::unique_ptr<CFile> && pFile, bool read, bool binary)
 {
 	wxASSERT(pFile);
-	delete m_pFile;
-	m_pFile = pFile;
+
+	Close();
+
+	m_pFile = std::move(pFile);
 	m_read = read;
 	m_binary = binary;
 
-	if (read)
-	{
+	if (read) {
 		m_curAppBuf = BUFFERCOUNT - 1;
 		m_curThreadBuf = 0;
 	}
-	else
-	{
+	else {
 		m_curAppBuf = -1;
 		m_curThreadBuf = 0;
 	}
+
+#ifdef SIMULATE_IO
+	size_ = pFile->Length();
+#endif
 
 	m_running = true;
 	wxThread::Create();
@@ -64,24 +77,19 @@ bool CIOThread::Create(wxFile* pFile, bool read, bool binary)
 
 wxThread::ExitCode CIOThread::Entry()
 {
-	if (m_read)
-	{
-		while (m_running)
-		{
+	if (m_read) {
+		while (m_running) {
 			int len = ReadFromFile(m_buffers[m_curThreadBuf], BUFFERSIZE);
 
 			wxMutexLocker locker(m_mutex);
 
-			if (m_appWaiting)
-			{
-				if (!m_evtHandler)
-				{
+			if (m_appWaiting) {
+				if (!m_evtHandler) {
 					m_running = false;
 					break;
 				}
 				m_appWaiting = false;
-				CIOThreadEvent evt;
-				m_evtHandler->SendEvent(evt);
+				m_evtHandler->SendEvent<CIOThreadEvent>();
 			}
 
 			if (len == wxInvalidOffset)
@@ -160,8 +168,7 @@ wxThread::ExitCode CIOThread::Entry()
 					break;
 				}
 				m_appWaiting = false;
-				CIOThreadEvent evt;
-				m_evtHandler->SendEvent(evt);
+				m_evtHandler->SendEvent<CIOThreadEvent>();
 			}
 
 			if (m_error)
@@ -285,8 +292,7 @@ void CIOThread::Destroy()
 	m_mutex.Lock();
 
 	m_running = false;
-	if (m_threadWaiting)
-	{
+	if (m_threadWaiting) {
 		m_threadWaiting = false;
 		m_condition.Signal();
 	}
@@ -297,6 +303,14 @@ void CIOThread::Destroy()
 
 int CIOThread::ReadFromFile(char* pBuffer, int maxLen)
 {
+#ifdef SIMULATE_IO
+	if (size_ < 0) {
+		return 0;
+	}
+	size_ -= maxLen;
+	return maxLen;
+#endif
+
 	// In binary mode, no conversion has to be done.
 	// Also, under Windows the native newline format is already identical
 	// to the newline format of the FTP protocol
@@ -343,6 +357,9 @@ int CIOThread::ReadFromFile(char* pBuffer, int maxLen)
 
 bool CIOThread::WriteToFile(char* pBuffer, int len)
 {
+#ifdef SIMULATE_IO
+	return true;
+#endif
 	// In binary mode, no conversion has to be done.
 	// Also, under Windows the native newline format is already identical
 	// to the newline format of the FTP protocol
@@ -391,18 +408,17 @@ bool CIOThread::WriteToFile(char* pBuffer, int len)
 
 bool CIOThread::DoWrite(const char* pBuffer, int len)
 {
-	int fd = m_pFile->fd();
-	if (wxWrite(fd, pBuffer, len) == len)
+	int written = m_pFile->Write(pBuffer, len);
+	if (written == len) {
 		return true;
+	}
 
 	int code = wxSysErrorCode();
 
 	const wxString error = wxSysErrorMsg(code);
 
 	wxMutexLocker locker(m_mutex);
-	delete [] m_error_description;
-	m_error_description = new wxChar[error.Len() + 1];
-	wxStrcpy(m_error_description, error);
+	m_error_description = error;
 
 	return false;
 }
@@ -410,8 +426,5 @@ bool CIOThread::DoWrite(const char* pBuffer, int len)
 wxString CIOThread::GetError()
 {
 	wxMutexLocker locker(m_mutex);
-	if (!m_error_description)
-		return wxString();
-
-	return wxString(m_error_description);
+	return m_error_description;
 }

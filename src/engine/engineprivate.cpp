@@ -1,27 +1,30 @@
 #include <filezilla.h>
 #include "ControlSocket.h"
+#include "directorycache.h"
+#include "engineprivate.h"
 #include "event_loop.h"
 #include "ftpcontrolsocket.h"
-#include "sftpcontrolsocket.h"
-#include "directorycache.h"
-#include "logging_private.h"
 #include "httpcontrolsocket.h"
-#include "ratelimiter.h"
+#include "logging_private.h"
 #include "pathcache.h"
+#include "ratelimiter.h"
+#include "sftpcontrolsocket.h"
 
 wxCriticalSection CFileZillaEnginePrivate::mutex_;
 std::list<CFileZillaEnginePrivate*> CFileZillaEnginePrivate::m_engineList;
 int CFileZillaEnginePrivate::m_activeStatus[2] = {0, 0};
 std::list<CFileZillaEnginePrivate::t_failedLogins> CFileZillaEnginePrivate::m_failedLogins;
 
-CFileZillaEnginePrivate::CFileZillaEnginePrivate(CFileZillaEngineContext& context)
+CFileZillaEnginePrivate::CFileZillaEnginePrivate(CFileZillaEngineContext& context, CFileZillaEngine& parent)
 	: CEventHandler(context.GetEventLoop())
 	, event_loop_(context.GetEventLoop())
 	, socket_event_dispatcher_(context.GetSocketEventDispatcher())
+	, transfer_status_(*this)
 	, m_options(context.GetOptions())
 	, m_rateLimiter(context.GetRateLimiter())
 	, directory_cache_(context.GetDirectoryCache())
 	, path_cache_(context.GetPathCache())
+	, parent_(parent)
 {
 	m_engineList.push_back(this);
 
@@ -32,10 +35,20 @@ CFileZillaEnginePrivate::CFileZillaEnginePrivate(CFileZillaEngineContext& contex
 	}
 
 	m_pLogging = new CLogging(this);
+
+	{
+		wxCriticalSectionLocker lock(notification_mutex_);
+		queue_logs_ = m_options.GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 0 && m_options.GetOptionVal(OPTION_LOGGING_SHOW_DETAILED_LOGS) == 0;
+	}
+
+	RegisterOption(OPTION_LOGGING_SHOW_DETAILED_LOGS);
 }
 
 CFileZillaEnginePrivate::~CFileZillaEnginePrivate()
 {
+	RemoveHandler();
+	m_maySendNotificationEvent = false;
+
 	m_pControlSocket.reset();
 	m_pCurrentCommand.reset();
 
@@ -116,9 +129,65 @@ void CFileZillaEnginePrivate::AddNotification(CNotification *pNotification)
 	}
 
 	wxFzEvent evt(wxID_ANY);
-	evt.engine_ = dynamic_cast<CFileZillaEngine*>(this);
-	wxASSERT(evt.engine_);
+	evt.engine_ = &parent_;
 	wxPostEvent(m_pEventHandler, evt);
+}
+
+void CFileZillaEnginePrivate::AddLogNotification(CLogmsgNotification *pNotification)
+{
+	wxCriticalSectionLocker lock(notification_mutex_);
+
+	if (pNotification->msgType == MessageType::Error) {
+		queue_logs_ = false;
+		SendQueuedLogs();
+		AddNotification(pNotification);
+	}
+	else if (pNotification->msgType == MessageType::Status) {
+		ClearQueuedLogs(false);
+		AddNotification(pNotification);
+	}
+	else if (!queue_logs_) {
+		AddNotification(pNotification);
+	}
+	else {
+		queued_logs_.push_back(pNotification);
+	}
+}
+
+void CFileZillaEnginePrivate::SendQueuedLogs(bool reset_flag)
+{
+	{
+		wxCriticalSectionLocker lock(notification_mutex_);
+		m_NotificationList.insert(m_NotificationList.end(), queued_logs_.begin(), queued_logs_.end());
+		queued_logs_.clear();
+
+		if (reset_flag) {
+			queue_logs_ = m_options.GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 0 && m_options.GetOptionVal(OPTION_LOGGING_SHOW_DETAILED_LOGS) == 0;
+		}
+
+		if (!m_maySendNotificationEvent || !m_pEventHandler || m_NotificationList.empty()) {
+			return;
+		}
+		m_maySendNotificationEvent = false;
+	}
+
+	wxFzEvent evt(wxID_ANY);
+	evt.engine_ = &parent_;
+	wxPostEvent(m_pEventHandler, evt);
+}
+
+void CFileZillaEnginePrivate::ClearQueuedLogs(bool reset_flag)
+{
+	wxCriticalSectionLocker lock(notification_mutex_);
+
+	for (auto msg : queued_logs_) {
+		delete msg;
+	}
+	queued_logs_.clear();
+
+	if (reset_flag) {
+		queue_logs_ = m_options.GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 0 && m_options.GetOptionVal(OPTION_LOGGING_SHOW_DETAILED_LOGS) == 0;
+	}
 }
 
 int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
@@ -176,6 +245,13 @@ int CFileZillaEnginePrivate::ResetOperation(int nErrorCode)
 			notification->commandId = Command::none;
 			AddNotification(notification);
 		}
+	}
+
+	if (nErrorCode != FZ_REPLY_OK) {
+		SendQueuedLogs(true);
+	}
+	else {
+		ClearQueuedLogs(true);
 	}
 
 	return nErrorCode;
@@ -277,11 +353,21 @@ int CFileZillaEnginePrivate::FileTransfer(const CFileTransferCommand &command)
 
 int CFileZillaEnginePrivate::RawCommand(const CRawCommand& command)
 {
+	{
+		wxCriticalSectionLocker lock(notification_mutex_);
+		queue_logs_ = false;
+	}
 	return m_pControlSocket->RawCommand(command.GetCommand());
 }
 
 int CFileZillaEnginePrivate::Delete(const CDeleteCommand& command)
 {
+	if (command.GetFiles().size() == 1) {
+		m_pLogging->LogMessage(MessageType::Status, _("Deleting \"%s\""), command.GetPath().FormatFilename(command.GetFiles().front()));
+	}
+	else {
+		m_pLogging->LogMessage(MessageType::Status, _("Deleting %u files from \"%s\""), static_cast<unsigned int>(command.GetFiles().size()), command.GetPath().GetPath());
+	}
 	return m_pControlSocket->Delete(command.GetPath(), command.GetFiles());
 }
 
@@ -502,17 +588,19 @@ void CFileZillaEnginePrivate::operator()(CEventBase const& ev)
 
 	Dispatch<CFileZillaEngineEvent>(ev, this, &CFileZillaEnginePrivate::OnEngineEvent);
 	Dispatch<CCommandEvent>(ev, this, &CFileZillaEnginePrivate::OnCommandEvent);
+
+	Dispatch<CAsyncRequestReplyEvent>(ev, this, &CFileZillaEnginePrivate::OnSetAsyncRequestReplyEvent);
 }
 
-int CFileZillaEnginePrivate::CheckPreconditions(CCommand const& command)
+int CFileZillaEnginePrivate::CheckCommandPreconditions(CCommand const& command, bool checkBusy)
 {
 	if (!command.valid()) {
 		return FZ_REPLY_SYNTAXERROR;
 	}
-	else if (command.GetId() != Command::cancel && IsBusy()) {
+	else if (checkBusy && IsBusy()) {
 		return FZ_REPLY_BUSY;
 	}
-	else if (command.GetId() != Command::connect && command.GetId() != Command::disconnect && command.GetId() != Command::cancel && !IsConnected()) {
+	else if (command.GetId() != Command::connect && command.GetId() != Command::disconnect && !IsConnected()) {
 		return FZ_REPLY_NOTCONNECTED;
 	}
 	return FZ_REPLY_OK;
@@ -526,41 +614,43 @@ void CFileZillaEnginePrivate::OnCommandEvent()
 		CCommand& command = *m_pCurrentCommand;
 		Command id = command.GetId();
 
-		int res = CheckPreconditions(*m_pCurrentCommand);
-		switch (m_pCurrentCommand->GetId())
-		{
-		case Command::connect:
-			res = Connect(reinterpret_cast<const CConnectCommand &>(command));
-			break;
-		case Command::disconnect:
-			res = Disconnect(reinterpret_cast<const CDisconnectCommand &>(command));
-			break;
-		case Command::list:
-			res = List(reinterpret_cast<const CListCommand &>(command));
-			break;
-		case Command::transfer:
-			res = FileTransfer(reinterpret_cast<const CFileTransferCommand &>(command));
-			break;
-		case Command::raw:
-			res = RawCommand(reinterpret_cast<const CRawCommand&>(command));
-			break;
-		case Command::del:
-			res = Delete(reinterpret_cast<const CDeleteCommand&>(command));
-			break;
-		case Command::removedir:
-			res = RemoveDir(reinterpret_cast<const CRemoveDirCommand&>(command));
-			break;
-		case Command::mkdir:
-			res = Mkdir(reinterpret_cast<const CMkdirCommand&>(command));
-			break;
-		case Command::rename:
-			res = Rename(reinterpret_cast<const CRenameCommand&>(command));
-			break;
-		case Command::chmod:
-			res = Chmod(reinterpret_cast<const CChmodCommand&>(command));
-			break;
-		default:
-			res = FZ_REPLY_SYNTAXERROR;
+		int res = CheckCommandPreconditions(*m_pCurrentCommand, false);
+		if (res == FZ_REPLY_OK) {
+			switch (m_pCurrentCommand->GetId())
+			{
+			case Command::connect:
+				res = Connect(reinterpret_cast<const CConnectCommand &>(command));
+				break;
+			case Command::disconnect:
+				res = Disconnect(reinterpret_cast<const CDisconnectCommand &>(command));
+				break;
+			case Command::list:
+				res = List(reinterpret_cast<const CListCommand &>(command));
+				break;
+			case Command::transfer:
+				res = FileTransfer(reinterpret_cast<const CFileTransferCommand &>(command));
+				break;
+			case Command::raw:
+				res = RawCommand(reinterpret_cast<const CRawCommand&>(command));
+				break;
+			case Command::del:
+				res = Delete(reinterpret_cast<const CDeleteCommand&>(command));
+				break;
+			case Command::removedir:
+				res = RemoveDir(reinterpret_cast<const CRemoveDirCommand&>(command));
+				break;
+			case Command::mkdir:
+				res = Mkdir(reinterpret_cast<const CMkdirCommand&>(command));
+				break;
+			case Command::rename:
+				res = Rename(reinterpret_cast<const CRenameCommand&>(command));
+				break;
+			case Command::chmod:
+				res = Chmod(reinterpret_cast<const CChmodCommand&>(command));
+				break;
+			default:
+				res = FZ_REPLY_SYNTAXERROR;
+			}
 		}
 
 		if (id != Command::disconnect)
@@ -595,6 +685,8 @@ void CFileZillaEnginePrivate::DoCancel()
 		notification->nReplyCode = FZ_REPLY_DISCONNECTED | FZ_REPLY_CANCELED;
 		notification->commandId = Command::connect;
 		AddNotification(notification);
+
+		ClearQueuedLogs(true);
 	}
 	else {
 		if (m_pControlSocket)
@@ -602,4 +694,247 @@ void CFileZillaEnginePrivate::DoCancel()
 		else
 			ResetOperation(FZ_REPLY_CANCELED);
 	}
+}
+
+bool CFileZillaEnginePrivate::CheckAsyncRequestReplyPreconditions(std::unique_ptr<CAsyncRequestNotification> const& reply)
+{
+	if (!reply)
+		return false;
+	if (!IsBusy())
+		return false;
+
+	notification_mutex_.Enter();
+	if (reply->requestNumber != m_asyncRequestCounter) {
+		notification_mutex_.Leave();
+		return false;
+	}
+	notification_mutex_.Leave();
+
+	if (!m_pControlSocket)
+		return false;
+
+	return true;
+}
+
+void CFileZillaEnginePrivate::OnSetAsyncRequestReplyEvent(std::unique_ptr<CAsyncRequestNotification> const& reply)
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (!CheckAsyncRequestReplyPreconditions(reply)) {
+		return;
+	}
+
+	m_pControlSocket->SetAlive();
+	m_pControlSocket->SetAsyncRequestReply(reply.get());
+}
+
+int CFileZillaEnginePrivate::Init(wxEvtHandler *pEventHandler)
+{
+	wxCriticalSectionLocker lock(mutex_);
+	m_pEventHandler = pEventHandler;
+	return FZ_REPLY_OK;
+}
+
+int CFileZillaEnginePrivate::Execute(const CCommand &command)
+{
+	wxCriticalSectionLocker lock(mutex_);
+
+	int res = CheckCommandPreconditions(command, true);
+	if (res != FZ_REPLY_OK) {
+		return res;
+	}
+
+	m_pCurrentCommand.reset(command.Clone());
+	SendEvent<CCommandEvent>();
+
+	return FZ_REPLY_WOULDBLOCK;
+}
+
+std::unique_ptr<CNotification> CFileZillaEnginePrivate::GetNextNotification()
+{
+	wxCriticalSectionLocker lock(notification_mutex_);
+
+	if (m_NotificationList.empty()) {
+		m_maySendNotificationEvent = true;
+		return 0;
+	}
+	std::unique_ptr<CNotification> pNotification(m_NotificationList.front());
+	m_NotificationList.pop_front();
+
+	return pNotification;
+}
+
+bool CFileZillaEnginePrivate::SetAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> && pNotification)
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (!CheckAsyncRequestReplyPreconditions(pNotification)) {
+		return false;
+	}
+
+	SendEvent<CAsyncRequestReplyEvent>(std::move(pNotification));
+
+	return true;
+}
+
+bool CFileZillaEnginePrivate::IsPendingAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> const& pNotification)
+{
+	if (!pNotification)
+		return false;
+
+	if (!IsBusy())
+		return false;
+
+	wxCriticalSectionLocker lock(notification_mutex_);
+	return pNotification->requestNumber == m_asyncRequestCounter;
+}
+
+bool CFileZillaEnginePrivate::IsActive(CFileZillaEngine::_direction direction)
+{
+	wxCriticalSectionLocker lock(mutex_);
+
+	if (m_activeStatus[direction] == 2) {
+		m_activeStatus[direction] = 1;
+		return true;
+	}
+
+	m_activeStatus[direction] = 0;
+	return false;
+}
+
+bool CFileZillaEnginePrivate::GetTransferStatus(CTransferStatus &status, bool &changed)
+{
+	return transfer_status_.Get(status, changed);
+}
+
+int CFileZillaEnginePrivate::CacheLookup(const CServerPath& path, CDirectoryListing& listing)
+{
+	// TODO: Possible optimization: Atomically get current server. The cache has its own mutex.
+	wxCriticalSectionLocker lock(mutex_);
+
+	if (!IsConnected())
+		return FZ_REPLY_ERROR;
+
+	wxASSERT(m_pControlSocket->GetCurrentServer());
+
+	bool is_outdated = false;
+	if (!directory_cache_.Lookup(listing, *m_pControlSocket->GetCurrentServer(), path, true, is_outdated))
+		return FZ_REPLY_ERROR;
+
+	return FZ_REPLY_OK;
+}
+
+int CFileZillaEnginePrivate::Cancel()
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (!IsBusy())
+		return FZ_REPLY_OK;
+
+	SendEvent<CFileZillaEngineEvent>(engineCancel);
+	return FZ_REPLY_WOULDBLOCK;
+}
+
+void CFileZillaEnginePrivate::OnOptionChanged(int option)
+{
+	wxCriticalSectionLocker lock(notification_mutex_);
+	queue_logs_ = m_options.GetOptionVal(OPTION_LOGGING_DEBUGLEVEL) == 0 && m_options.GetOptionVal(OPTION_LOGGING_SHOW_DETAILED_LOGS) == 0;
+	if (!queue_logs_) {
+		SendQueuedLogs();
+	}
+}
+
+
+CTransferStatusManager::CTransferStatusManager(CFileZillaEnginePrivate& engine)
+	: engine_(engine)
+{
+}
+
+void CTransferStatusManager::Reset()
+{
+	{
+		wxCriticalSectionLocker lock(mutex_);
+		status_.reset();
+		send_state_ = 0;
+	}
+
+	engine_.AddNotification(new CTransferStatusNotification(0));
+}
+
+void CTransferStatusManager::Init(wxFileOffset totalSize, wxFileOffset startOffset, bool list)
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (startOffset < 0)
+		startOffset = 0;
+
+	status_ = make_unique<CTransferStatus>();
+	status_->list = list;
+	status_->totalSize = totalSize;
+	status_->startOffset = startOffset;
+	status_->currentOffset = startOffset;
+	status_->madeProgress = false;
+}
+
+void CTransferStatusManager::SetStartTime()
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (!status_)
+		return;
+
+	status_->started = wxDateTime::UNow();
+}
+
+void CTransferStatusManager::SetMadeProgress()
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (!status_)
+		return;
+
+	status_->madeProgress = true;
+}
+
+void CTransferStatusManager::Update(wxFileOffset transferredBytes)
+{
+	CNotification* notification = 0;
+
+	{
+		wxCriticalSectionLocker lock(mutex_);
+		if (!status_)
+			return;
+
+		status_->currentOffset += transferredBytes;
+
+		if (!send_state_)
+			notification = new CTransferStatusNotification(new CTransferStatus(*status_));
+		send_state_ = 2;
+	}
+
+	if (notification) {
+		engine_.AddNotification(notification);
+	}
+}
+
+bool CTransferStatusManager::Get(CTransferStatus &status, bool &changed)
+{
+	wxCriticalSectionLocker lock(mutex_);
+	if (!status_) {
+		changed = false;
+		send_state_ = 0;
+		return false;
+	}
+
+	status = *status_;
+	if (send_state_ == 2) {
+		changed = true;
+		send_state_ = 1;
+		return true;
+	}
+	else {
+		changed = false;
+		send_state_ = 0;
+		return true;
+	}
+}
+
+bool CTransferStatusManager::Empty()
+{
+	wxCriticalSectionLocker lock(mutex_);
+	return status_ != 0;
 }

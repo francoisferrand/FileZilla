@@ -4,8 +4,13 @@
 #include <wx/file.h>
 #include "event_loop.h"
 
-#define BUFFERCOUNT 3
-#define BUFFERSIZE 65536
+#define BUFFERCOUNT 5
+#define BUFFERSIZE 128*1024
+
+// Does not actually read from or write to file
+// Useful for benchmarks to avoid IO bottleneck
+// skewing results
+//#define SIMULATE_IO
 
 struct io_thread_event_type{};
 typedef CEvent<io_thread_event_type> CIOThreadEvent;
@@ -17,13 +22,14 @@ enum IORet
 	IO_Again = -1
 };
 
+class CFile;
 class CIOThread final : public wxThread
 {
 public:
 	CIOThread();
 	virtual ~CIOThread();
 
-	bool Create(wxFile* pFile, bool read, bool binary);
+	bool Create(std::unique_ptr<CFile> && pFile, bool read, bool binary);
 	virtual void Destroy(); // Only call that might be blocking
 
 	// Call before first call to one of the GetNext*Buffer functions
@@ -50,6 +56,8 @@ public:
 	wxString GetError();
 
 protected:
+	void Close();
+
 	virtual ExitCode Entry();
 
 	int ReadFromFile(char* pBuffer, int maxLen);
@@ -60,7 +68,7 @@ protected:
 
 	bool m_read;
 	bool m_binary;
-	wxFile* m_pFile;
+	std::unique_ptr<CFile> m_pFile;
 
 	char* m_buffers[BUFFERCOUNT];
 	unsigned int m_bufferLens[BUFFERCOUNT];
@@ -80,7 +88,11 @@ protected:
 
 	bool m_wasCarriageReturn;
 
-	wxChar* m_error_description;
+	wxString m_error_description;
+
+#ifdef SIMULATE_IO
+	wxFileOffset size_;
+#endif
 };
 
 #endif //__IOTHREAD_H__

@@ -1,4 +1,4 @@
-AC_INIT([FileZilla],[3.9.0.6],[tim.kosse@filezilla-project.org],[],[https://filezilla-project.org/])
+AC_INIT([FileZilla],[3.10.0-beta2],[tim.kosse@filezilla-project.org],[],[https://filezilla-project.org/])
 AC_CONFIG_HEADERS([src/include/config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
@@ -102,7 +102,7 @@ if test "$buildmain" = "yes"; then
 
   AM_OPTIONS_WXCONFIG
 
-  MIN_WX_VERSION="3.0.1"
+  MIN_WX_VERSION="3.0.2"
   AM_PATH_WXCONFIG([$MIN_WX_VERSION], [wxWin=1], , [aui,xrc,adv,core,xml,net,base], [--unicode=yes --universal=no])
   if test "$wxWin" != 1; then
     AC_MSG_ERROR([
@@ -261,11 +261,11 @@ if test "$buildmain" = "yes" -o "$shellextonly" = "yes"; then
   # Set Windows-specific linker flags
   # ---------------------------------
   if echo $host_os | grep "cygwin\|mingw" > /dev/null 2>&1; then
-    # Todo: Once Microsoft ends support for some XP derivatives, increase to Vista.
-    AX_CHECK_LINK_FLAG([-Wl,--major-subsystem-version -Wl,5], [LDFLAGS="$LDFLAGS -Wl,--major-subsystem-version -Wl,5"])
-    AX_CHECK_LINK_FLAG([-Wl,--minor-subsystem-version -Wl,1], [LDFLAGS="$LDFLAGS -Wl,--minor-subsystem-version -Wl,1"])
-    AX_CHECK_LINK_FLAG([-Wl,--major-os-version -Wl,5], [LDFLAGS="$LDFLAGS -Wl,--major-os-version -Wl,5"])
-    AX_CHECK_LINK_FLAG([-Wl,--minor-os-version -Wl,1], [LDFLAGS="$LDFLAGS -Wl,--minor-os-version -Wl,1"])
+    # We currently require Vista minimum.
+    AX_CHECK_LINK_FLAG([-Wl,--major-subsystem-version -Wl,6], [LDFLAGS="$LDFLAGS -Wl,--major-subsystem-version -Wl,6"])
+    AX_CHECK_LINK_FLAG([-Wl,--minor-subsystem-version -Wl,0], [LDFLAGS="$LDFLAGS -Wl,--minor-subsystem-version -Wl,0"])
+    AX_CHECK_LINK_FLAG([-Wl,--major-os-version -Wl,6], [LDFLAGS="$LDFLAGS -Wl,--major-os-version -Wl,6"])
+    AX_CHECK_LINK_FLAG([-Wl,--minor-os-version -Wl,0], [LDFLAGS="$LDFLAGS -Wl,--minor-os-version -Wl,0"])
   fi
 fi
 
@@ -301,27 +301,31 @@ if test "$buildmain" = "yes"; then
 
   IDN_LIB=
   if ! echo $WX_CPPFLAGS | grep __WXMSW__; then
+    AC_LANG_PUSH(C++)
+    AX_CHECK_DEFINE([netdb.h], [AI_IDN],
+      [],
+      [
+        AC_CHECK_HEADER(idna.h,,
+        [
+          AC_MSG_ERROR([idna.h not found which is part of GNU libidn.])
+        ])
 
-    AC_CHECK_HEADER(idna.h,,
-    [
-      AC_MSG_ERROR([idna.h not found which is part of GNU libidn.])
-    ])
+        AC_ARG_WITH(idn-lib,
+            AS_HELP_STRING([--with-idn-lib=FILE],[Use the given path to the idn library.]),
+        [
+          if test "$withval" != "yes" -a "$withval" != ""; then
+              IDN_LIB=$withval
+          fi
+        ])
 
-    AC_ARG_WITH(idn-lib,
-        AS_HELP_STRING([--with-idn-lib=FILE],[Use the given path to the idn library.]),
-    [
-      if test "$withval" != "yes" -a "$withval" != ""; then
-          IDN_LIB=$withval
-      fi
-    ])
-
-    if test "x$IDN_LIB" = "x"; then
-      AC_CHECK_LIB(idn, stringprep_check_version, IDN_LIB="-lidn",
-                   AC_MSG_ERROR([GNU libidn not found. Try using --with-idn-lib=FILE to specify the library path.])
-                   )
-    fi
+        if test "x$IDN_LIB" = "x"; then
+          AC_CHECK_LIB(idn, stringprep_check_version, IDN_LIB="-lidn",
+                       AC_MSG_ERROR([GNU libidn not found. Try using --with-idn-lib=FILE to specify the library path.])
+                       )
+        fi
+      ])
+    AC_LANG_POP(C++)
   fi
-
   AC_SUBST(IDN_LIB)
 
   # Binreloc
@@ -487,6 +491,9 @@ if test "$buildmain" = "yes"; then
   AC_CHECK_FUNC(setenv, [AC_DEFINE([HAVE_SETENV], [1], [Define to 1 if setenv function is available.])], [])
   AC_CHECK_FUNC(putenv, [AC_DEFINE([HAVE_PUTENV], [1], [Define to 1 if putenv function is available.])], [])
 
+  # Some platforms, e.g. OS X, lack posix_fadvise
+  AC_CHECK_FUNCS(posix_fadvise)
+
   # Some platforms have no d_type entry in their dirent structure
   gl_CHECK_TYPE_STRUCT_DIRENT_D_TYPE
 
@@ -602,6 +609,7 @@ src/interface/resources/32x32/Makefile data/Makefile
 src/interface/resources/cyril/Makefile
 src/interface/resources/cyril/16x16/Makefile
 src/interface/resources/blukis/Makefile
+src/interface/resources/flatzilla/Makefile
 src/interface/resources/lone/Makefile
 src/interface/resources/minimal/Makefile
 src/interface/resources/opencrystal/Makefile

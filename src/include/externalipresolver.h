@@ -13,8 +13,8 @@ public:
 	virtual ~CExternalIPResolver();
 
 	bool Done() const { return m_done; }
-	bool Successful() const { return !m_ip.empty(); }
-	wxString GetIP() const { return m_ip; }
+	bool Successful() const;
+	wxString GetIP() const;
 
 	void GetExternalIP(const wxString& address, CSocket::address_family protocol, bool force = false);
 
@@ -26,12 +26,8 @@ protected:
 	CSocket::address_family m_protocol{};
 	unsigned long m_port{80};
 	CEventHandler * m_handler{};
-	int m_id;
 
 	bool m_done{};
-
-	static wxString m_ip;
-	static bool m_checked;
 
 	wxString m_data;
 

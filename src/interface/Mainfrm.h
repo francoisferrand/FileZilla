@@ -7,6 +7,8 @@
 
 #include "statusbar.h"
 
+#include "engine_context.h"
+
 class CAsyncRequestQueue;
 class CContextControl;
 class CLed;
@@ -41,7 +43,6 @@ public:
 
 	void UpdateActivityLed(int direction);
 
-	void AddToRequestQueue(CFileZillaEngine* pEngine, CAsyncRequestNotification* pNotification);
 	CStatusView* GetStatusView() { return m_pStatusView; }
 	CQueueView* GetQueue() { return m_pQueueView; }
 	CQuickconnectBar* GetQuickconnectBar() { return m_pQuickconnectBar; }

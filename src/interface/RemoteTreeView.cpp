@@ -7,15 +7,12 @@
 #include "recursive_operation.h"
 #include "inputdialog.h"
 #include "dragdropmanager.h"
+#include "drop_target_ex.h"
 #include <wx/clipbrd.h>
 #include "queue.h"
 #include "QueueView.h"
 #include "themeprovider.h"
 #include "Options.h"
-
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
 
 class CItemData : public wxTreeItemData
 {
@@ -24,12 +21,14 @@ public:
 	CServerPath m_path;
 };
 
-class CRemoteTreeViewDropTarget : public wxDropTarget
+class CRemoteTreeViewDropTarget : public CScrollableDropTarget<wxTreeCtrlEx>
 {
 public:
 	CRemoteTreeViewDropTarget(CRemoteTreeView* pRemoteTreeView)
-		: m_pRemoteTreeView(pRemoteTreeView), m_pFileDataObject(new wxFileDataObject()),
-		m_pRemoteDataObject(new CRemoteDataObject())
+		: CScrollableDropTarget<wxTreeCtrlEx>(pRemoteTreeView)
+		, m_pRemoteTreeView(pRemoteTreeView)
+		, m_pFileDataObject(new wxFileDataObject())
+		, m_pRemoteDataObject(new CRemoteDataObject())
 	{
 		m_pDataObject = new wxDataObjectComposite;
 		m_pDataObject->Add(m_pRemoteDataObject, true);
@@ -40,8 +39,7 @@ public:
 	void ClearDropHighlight()
 	{
 		const wxTreeItemId dropHighlight = m_pRemoteTreeView->m_dropHighlight;
-		if (dropHighlight != wxTreeItemId())
-		{
+		if (dropHighlight != wxTreeItemId()) {
 			m_pRemoteTreeView->SetItemDropHighlight(dropHighlight, false);
 			m_pRemoteTreeView->m_dropHighlight = wxTreeItemId();
 		}
@@ -137,6 +135,9 @@ public:
 
 	virtual bool OnDrop(wxCoord x, wxCoord y)
 	{
+		if (!CScrollableDropTarget<wxTreeCtrlEx>::OnDrop(x, y)) {
+			return false;
+		}
 		ClearDropHighlight();
 
 		wxTreeItemId hit = GetHit(wxPoint(x, y));
@@ -150,21 +151,19 @@ public:
 		return true;
 	}
 
-	CServerPath DisplayDropHighlight(wxPoint point)
+	wxTreeItemId DisplayDropHighlight(wxPoint point)
 	{
 		wxTreeItemId hit = GetHit(point);
-		if (!hit)
-		{
+		if (!hit) {
 			ClearDropHighlight();
-			return CServerPath();
+			return wxTreeItemId();
 		}
 
 		const CServerPath& path = m_pRemoteTreeView->GetPathFromItem(hit);
 
-		if (path.empty())
-		{
+		if (path.empty()) {
 			ClearDropHighlight();
-			return CServerPath();
+			return wxTreeItemId();
 		}
 
 		const wxTreeItemId dropHighlight = m_pRemoteTreeView->m_dropHighlight;
@@ -174,11 +173,13 @@ public:
 		m_pRemoteTreeView->SetItemDropHighlight(hit, true);
 		m_pRemoteTreeView->m_dropHighlight = hit;
 
-		return path;
+		return hit;
 	}
 
 	virtual wxDragResult OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
 	{
+		def = CScrollableDropTarget<wxTreeCtrlEx>::OnDragOver(x, y, def);
+
 		if (def == wxDragError ||
 			def == wxDragNone ||
 			def == wxDragCancel)
@@ -187,8 +188,8 @@ public:
 			return def;
 		}
 
-		const CServerPath& path = DisplayDropHighlight(wxPoint(x, y));
-		if (path.empty())
+		wxTreeItemId hit = DisplayDropHighlight(wxPoint(x, y));
+		if (!hit.IsOk())
 			return wxDragNone;
 
 		if (def == wxDragLink)
@@ -199,11 +200,13 @@ public:
 
 	virtual void OnLeave()
 	{
+		CScrollableDropTarget<wxTreeCtrlEx>::OnLeave();
 		ClearDropHighlight();
 	}
 
 	virtual wxDragResult OnEnter(wxCoord x, wxCoord y, wxDragResult def)
 	{
+		def = CScrollableDropTarget<wxTreeCtrlEx>::OnEnter(x, y, def);
 		return OnDragOver(x, y, def);
 	}
 

@@ -1,6 +1,7 @@
 #include <filezilla.h>
 #include "ControlSocket.h"
 #include "directorycache.h"
+#include "engineprivate.h"
 #include "event_loop.h"
 #include "local_filesys.h"
 #include "local_path.h"
@@ -13,10 +14,13 @@
 #include <wx/filename.h>
 
 #ifndef __WXMSW__
-#include <idna.h>
-extern "C" {
-#include <idn-free.h>
-}
+	#include <netdb.h>
+	#ifndef AI_IDN
+		#include <idna.h>
+		extern "C" {
+			#include <idn-free.h>
+		}
+	#endif
 #endif
 
 #include <errno.h>
@@ -51,8 +55,6 @@ CControlSocket::CControlSocket(CFileZillaEnginePrivate *pEngine)
 	m_pCurOpData = 0;
 	m_nOpState = 0;
 	m_pCurrentServer = 0;
-	m_pTransferStatus = 0;
-	m_transferStatusSendState = 0;
 
 	m_pCSConv = 0;
 	m_useUTF8 = false;
@@ -64,12 +66,12 @@ CControlSocket::CControlSocket(CFileZillaEnginePrivate *pEngine)
 
 CControlSocket::~CControlSocket()
 {
+	RemoveHandler();
+
 	DoClose();
 
 	delete m_pCSConv;
 	m_pCSConv = 0;
-
-	RemoveHandler();
 }
 
 int CControlSocket::Disconnect()
@@ -90,22 +92,23 @@ Command CControlSocket::GetCurrentCommandId() const
 
 void CControlSocket::LogTransferResultMessage(int nErrorCode, CFileTransferOpData *pData)
 {
-	if (m_pTransferStatus && (nErrorCode == FZ_REPLY_OK || m_pTransferStatus->madeProgress))
-	{
-		int elapsed = wxTimeSpan(wxDateTime::Now() - m_pTransferStatus->started).GetSeconds().GetLo();
+	CTransferStatus status;
+	bool tmp;
+
+	if (m_pEngine->transfer_status_.Get(status, tmp) && (nErrorCode == FZ_REPLY_OK || status.madeProgress)) {
+		int elapsed = wxTimeSpan(wxDateTime::UNow() - status.started).GetSeconds().GetLo();
 		if (elapsed <= 0)
 			elapsed = 1;
 		wxString time = wxString::Format(
 			wxPLURAL("%d second", "%d seconds", elapsed),
 			elapsed);
 
-		wxLongLong transferred = m_pTransferStatus->currentOffset - m_pTransferStatus->startOffset;
+		wxLongLong transferred = status.currentOffset - status.startOffset;
 		wxString size = CSizeFormatBase::Format(&m_pEngine->GetOptions(), transferred, true);
 
 		MessageType msgType = MessageType::Error;
 		wxString msg;
-		if (nErrorCode == FZ_REPLY_OK)
-		{
+		if (nErrorCode == FZ_REPLY_OK) {
 			msgType = MessageType::Status;
 			msg = _("File transfer successful, transferred %s in %s");
 		}
@@ -117,8 +120,7 @@ void CControlSocket::LogTransferResultMessage(int nErrorCode, CFileTransferOpDat
 			msg = _("File transfer failed after transferring %s in %s");
 		LogMessage(msgType, msg, size, time);
 	}
-	else
-	{
+	else {
 		if ((nErrorCode & FZ_REPLY_CANCELED) == FZ_REPLY_CANCELED)
 			LogMessage(MessageType::Error, _("File transfer aborted by user"));
 		else if (nErrorCode == FZ_REPLY_OK)
@@ -146,8 +148,7 @@ int CControlSocket::ResetOperation(int nErrorCode)
 	if (m_pCurOpData && m_pCurOpData->holdsLock)
 		UnlockCache();
 
-	if (m_pCurOpData && m_pCurOpData->pNextOpData)
-	{
+	if (m_pCurOpData && m_pCurOpData->pNextOpData) {
 		COpData *pNext = m_pCurOpData->pNextOpData;
 		m_pCurOpData->pNextOpData = 0;
 		delete m_pCurOpData;
@@ -169,8 +170,7 @@ int CControlSocket::ResetOperation(int nErrorCode)
 		prefix = _("Critical error:") + _T(" ");
 	}
 
-	if (m_pCurOpData)
-	{
+	if (m_pCurOpData) {
 		const Command commandId = m_pCurOpData->opId;
 		switch (commandId)
 		{
@@ -190,8 +190,14 @@ int CControlSocket::ResetOperation(int nErrorCode)
 				LogMessage(MessageType::Error, prefix + _("Directory listing aborted by user"));
 			else if (nErrorCode != FZ_REPLY_OK)
 				LogMessage(MessageType::Error, prefix + _("Failed to retrieve directory listing"));
-			else
-				LogMessage(MessageType::Status, _("Directory listing successful"));
+			else {
+				if (m_CurrentPath.empty()) {
+					LogMessage(MessageType::Status, _("Directory listing successful"));
+				}
+				else {
+					LogMessage(MessageType::Status, _("Directory listing of \"%s\" successful"), m_CurrentPath.GetPath());
+				}
+			}
 			break;
 		case Command::transfer:
 			{
@@ -218,7 +224,7 @@ int CControlSocket::ResetOperation(int nErrorCode)
 		m_pCurOpData = 0;
 	}
 
-	ResetTransferStatus();
+	m_pEngine->transfer_status_.Reset();
 
 	SetWait(false);
 
@@ -267,8 +273,9 @@ wxString CControlSocket::ConvertDomainName(wxString const& domain)
 	wxString ret(output);
 	delete [] output;
 	return ret;
+#elif defined(AI_IDN)
+	return domain;
 #else
-
 	wxScopedCharBuffer const utf8 = domain.utf8_str();
 
 	char *output = 0;
@@ -293,83 +300,6 @@ void CControlSocket::Cancel()
 			ResetOperation(FZ_REPLY_CANCELED);
 	}
 }
-
-void CControlSocket::ResetTransferStatus()
-{
-	delete m_pTransferStatus;
-	m_pTransferStatus = 0;
-
-	m_pEngine->AddNotification(new CTransferStatusNotification(0));
-
-	m_transferStatusSendState = 0;
-}
-
-void CControlSocket::InitTransferStatus(wxFileOffset totalSize, wxFileOffset startOffset, bool list)
-{
-	if (startOffset < 0)
-		startOffset = 0;
-
-	delete m_pTransferStatus;
-	m_pTransferStatus = new CTransferStatus();
-
-	m_pTransferStatus->list = list;
-	m_pTransferStatus->totalSize = totalSize;
-	m_pTransferStatus->startOffset = startOffset;
-	m_pTransferStatus->currentOffset = startOffset;
-	m_pTransferStatus->madeProgress = false;
-}
-
-void CControlSocket::SetTransferStatusStartTime()
-{
-	if (!m_pTransferStatus)
-		return;
-
-	m_pTransferStatus->started = wxDateTime::Now();
-}
-
-void CControlSocket::SetTransferStatusMadeProgress()
-{
-	if (!m_pTransferStatus)
-		return;
-
-	m_pTransferStatus->madeProgress = true;
-}
-
-void CControlSocket::UpdateTransferStatus(wxFileOffset transferredBytes)
-{
-	// Todo: Mutex
-	if (!m_pTransferStatus)
-		return;
-
-	m_pTransferStatus->currentOffset += transferredBytes;
-
-	if (!m_transferStatusSendState)
-		m_pEngine->AddNotification(new CTransferStatusNotification(new CTransferStatus(*m_pTransferStatus)));
-	m_transferStatusSendState = 2;
-}
-
-bool CControlSocket::GetTransferStatus(CTransferStatus &status, bool &changed)
-{
-	// Todo: Mutex, called by interface.
-	if (!m_pTransferStatus) {
-		changed = false;
-		m_transferStatusSendState = 0;
-		return false;
-	}
-
-	status = *m_pTransferStatus;
-	if (m_transferStatusSendState == 2) {
-		changed = true;
-		m_transferStatusSendState = 1;
-		return true;
-	}
-	else {
-		changed = false;
-		m_transferStatusSendState = 0;
-		return true;
-	}
-}
-
 
 const CServer* CControlSocket::GetCurrentServer() const
 {
@@ -511,32 +441,28 @@ CFileTransferOpData::~CFileTransferOpData()
 {
 }
 
-wxString CControlSocket::ConvToLocal(const char* buffer)
+wxString CControlSocket::ConvToLocal(const char* buffer, size_t len)
 {
-	if (m_useUTF8)
-	{
-		wxChar* out = ConvToLocalBuffer(buffer, wxConvUTF8);
-		if (out)
-		{
-			wxString str = out;
+	size_t outLen{};
+	if (m_useUTF8) {
+		wxChar* out = ConvToLocalBuffer(buffer, wxConvUTF8, len, outLen);
+		if (out) {
+			wxString str(out, outLen - 1);
 			delete [] out;
 			return str;
 		}
 
 		// Fall back to local charset on error
-		if (m_pCurrentServer->GetEncodingType() != ENCODING_UTF8)
-		{
+		if (m_pCurrentServer->GetEncodingType() != ENCODING_UTF8) {
 			LogMessage(MessageType::Status, _("Invalid character sequence received, disabling UTF-8. Select UTF-8 option in site manager to force UTF-8."));
 			m_useUTF8 = false;
 		}
 	}
 
-	if (m_pCSConv)
-	{
-		wxChar* out = ConvToLocalBuffer(buffer, *m_pCSConv);
-		if (out)
-		{
-			wxString str = out;
+	if (m_pCSConv) {
+		wxChar* out = ConvToLocalBuffer(buffer, *m_pCSConv, len, outLen);
+		if (out) {
+			wxString str(out, outLen - 1);
 			delete [] out;
 			return str;
 		}
@@ -550,42 +476,53 @@ wxString CControlSocket::ConvToLocal(const char* buffer)
 	return str;
 }
 
-wxChar* CControlSocket::ConvToLocalBuffer(const char* buffer, wxMBConv& conv)
+wxChar* CControlSocket::ConvToLocalBuffer(const char* buffer, wxMBConv& conv, size_t len, size_t& outlen)
 {
-	size_t len = conv.MB2WC(0, buffer, 0);
-	if (!len || len == wxCONV_FAILED)
+	wxASSERT(buffer && len > 0 && !buffer[len - 1]);
+	outlen = conv.ToWChar(0, 0, buffer, len);
+	if (!outlen || outlen == wxCONV_FAILED)
 		return 0;
 
-	wchar_t* unicode = new wchar_t[len + 1];
-	conv.MB2WC(unicode, buffer, len + 1);
+	wchar_t* unicode = new wchar_t[outlen];
+	conv.ToWChar(unicode, outlen, buffer, len);
 	return unicode;
 }
 
-wxChar* CControlSocket::ConvToLocalBuffer(const char* buffer)
+wxChar* CControlSocket::ConvToLocalBuffer(const char* buffer, size_t len, size_t& outlen)
 {
-	if (m_useUTF8)
-	{
-		wxChar* res = ConvToLocalBuffer(buffer, wxConvUTF8);
+	if (m_useUTF8) {
+#ifdef __WXMSW__
+		// wxConvUTF8 is generic and slow.
+		// Use the highly optimized MultiByteToWideChar on Windows
+		// This helps when processing large directory listings.
+		int outlen2 = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buffer, len, 0, 0);
+		if (outlen2 > 0) {
+			wxChar* out = new wxChar[outlen2];
+			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, buffer, len, out, outlen2);
+			outlen = static_cast<size_t>(outlen2);
+			return out;
+		}
+#else
+		wxChar* res = ConvToLocalBuffer(buffer, wxConvUTF8, len, outlen);
 		if (res && *res)
 			return res;
+#endif
 
 		// Fall back to local charset on error
-		if (m_pCurrentServer->GetEncodingType() != ENCODING_UTF8)
-		{
+		if (m_pCurrentServer->GetEncodingType() != ENCODING_UTF8) {
 			LogMessage(MessageType::Status, _("Invalid character sequence received, disabling UTF-8. Select UTF-8 option in site manager to force UTF-8."));
 			m_useUTF8 = false;
 		}
 	}
 
-	if (m_pCSConv)
-	{
-		wxChar* res = ConvToLocalBuffer(buffer, *m_pCSConv);
+	if (m_pCSConv) {
+		wxChar* res = ConvToLocalBuffer(buffer, *m_pCSConv, len, outlen);
 		if (res && *res)
 			return res;
 	}
 
 	// Fallback: Conversion using current locale
-	wxChar* res = ConvToLocalBuffer(buffer, *wxConvCurrent);
+	wxChar* res = ConvToLocalBuffer(buffer, *wxConvCurrent, len, outlen);
 
 	return res;
 }
@@ -796,7 +733,7 @@ void CControlSocket::UnlockCache()
 			continue;
 
 		// Send notification
-		lockInfo.pControlSocket->SendEvent(CObtainLockEvent());
+		lockInfo.pControlSocket->SendEvent<CObtainLockEvent>();
 		break;
 	}
 }

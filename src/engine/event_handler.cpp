@@ -10,17 +10,13 @@ CEventHandler::CEventHandler(CEventLoop& loop)
 
 CEventHandler::~CEventHandler()
 {
+	wxASSERT(removing_); // To avoid races, the base class must have removed us already
 	RemoveHandler();
 }
 
 void CEventHandler::RemoveHandler()
 {
 	event_loop_.RemoveHandler(this);
-}
-
-void CEventHandler::SendEvent(CEventBase const& evt)
-{
-	event_loop_.SendEvent(this, evt);
 }
 
 timer_id CEventHandler::AddTimer(int ms_interval, bool one_shot)

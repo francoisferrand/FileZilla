@@ -6,6 +6,8 @@
 #include "engine_context.h"
 #include "event.h"
 #include "event_handler.h"
+#include "FileZillaEngine.h"
+#include "option_change_event_handler.h"
 
 class CControlSocket;
 class CLogging;
@@ -21,22 +23,66 @@ enum EngineNotificationType
 struct filezilla_engine_event_type;
 typedef CEvent<filezilla_engine_event_type, EngineNotificationType> CFileZillaEngineEvent;
 
-class CFileZillaEnginePrivate : public CEventHandler
+class CTransferStatusManager final
 {
 public:
+	CTransferStatusManager(CFileZillaEnginePrivate& engine);
+
+	CTransferStatusManager(CTransferStatusManager const&) = delete;
+	CTransferStatusManager& operator=(CTransferStatusManager const&) = delete;
+
+	bool Empty();
+
+	void Init(wxFileOffset totalSize, wxFileOffset startOffset, bool list);
+	void Reset();
+	void SetStartTime();
+	void SetMadeProgress();
+	void Update(wxFileOffset transferredBytes);
+
+	bool Get(CTransferStatus &status, bool &changed);
+
+protected:
+	wxCriticalSection mutex_;
+
+	std::unique_ptr<CTransferStatus> status_;
+	int send_state_{};
+
+	CFileZillaEnginePrivate& engine_;
+};
+
+class CFileZillaEnginePrivate final : public CEventHandler, COptionChangeEventHandler
+{
+public:
+	CFileZillaEnginePrivate(CFileZillaEngineContext& engine_context, CFileZillaEngine& parent);
+	virtual ~CFileZillaEnginePrivate();
+
+	int Init(wxEvtHandler *pEventHandler);
+
+	int Execute(CCommand const& command);
+	int Cancel();
 	int ResetOperation(int nErrorCode);
-	void SetActive(int direction);
 
-	// Add new pending notification
-	void AddNotification(CNotification *pNotification);
-
-	unsigned int GetNextAsyncRequestNumber();
+	const CCommand *GetCurrentCommand() const;
+	Command GetCurrentCommandId() const;
 
 	bool IsBusy() const;
 	bool IsConnected() const;
 
-	const CCommand *GetCurrentCommand() const;
-	Command GetCurrentCommandId() const;
+	bool IsPendingAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> const& pNotification);
+	bool SetAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> && pNotification);
+	unsigned int GetNextAsyncRequestNumber();
+
+	bool GetTransferStatus(CTransferStatus &status, bool &changed);
+
+	int CacheLookup(CServerPath const& path, CDirectoryListing& listing);
+
+	static bool IsActive(CFileZillaEngine::_direction direction);
+	void SetActive(int direction);
+
+	// Add new pending notification
+	void AddNotification(CNotification *pNotification);
+	void AddLogNotification(CLogmsgNotification *pNotification);
+	std::unique_ptr<CNotification> GetNextNotification();
 
 	COptionsBase& GetOptions() { return m_options; }
 	CRateLimiter& GetRateLimiter() { return m_rateLimiter; }
@@ -59,11 +105,18 @@ public:
 	CEventLoop& event_loop_;
 	CSocketEventDispatcher& socket_event_dispatcher_;
 
+	CTransferStatusManager transfer_status_;
 protected:
-	CFileZillaEnginePrivate(CFileZillaEngineContext& engine_context);
-	virtual ~CFileZillaEnginePrivate();
+	virtual void OnOptionChanged(int option);
 
-	int CheckPreconditions(CCommand const& command);
+	void SendQueuedLogs(bool reset_flag = false);
+	void ClearQueuedLogs(bool reset_flag);
+
+	int CheckCommandPreconditions(CCommand const& command, bool checkBusy);
+
+
+	bool CheckAsyncRequestReplyPreconditions(std::unique_ptr<CAsyncRequestNotification> const& reply);
+	void OnSetAsyncRequestReplyEvent(std::unique_ptr<CAsyncRequestNotification> const& reply);
 
 	// Command handlers, only called by CFileZillaEngine::Command
 	int Connect(const CConnectCommand &command);
@@ -143,9 +196,17 @@ protected:
 	CRateLimiter& m_rateLimiter;
 	CDirectoryCache& directory_cache_;
 	CPathCache& path_cache_;
+
+	CFileZillaEngine& parent_;
+
+	bool queue_logs_;
+	std::deque<CLogmsgNotification*> queued_logs_;
 };
 
 struct command_event_type{};
 typedef CEvent<command_event_type> CCommandEvent;
+
+struct async_request_reply_event_type{};
+typedef CEvent<async_request_reply_event_type, std::unique_ptr<CAsyncRequestNotification>> CAsyncRequestReplyEvent;
 
 #endif //__FILEZILLAENGINEPRIVATE_H__

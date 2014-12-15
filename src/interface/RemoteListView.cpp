@@ -17,6 +17,7 @@
 #include "recursive_operation.h"
 #include "edithandler.h"
 #include "dragdropmanager.h"
+#include "drop_target_ex.h"
 #include <wx/clipbrd.h>
 #include "sizeformatting.h"
 #include "timeformatting.h"
@@ -25,15 +26,11 @@
 #include "commctrl.h"
 #endif
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
-class CRemoteListViewDropTarget : public CListCtrlDropTarget
+class CRemoteListViewDropTarget : public CScrollableDropTarget<wxListCtrlEx>
 {
 public:
 	CRemoteListViewDropTarget(CRemoteListView* pRemoteListView)
-		: CListCtrlDropTarget(pRemoteListView)
+		: CScrollableDropTarget<wxListCtrlEx>(pRemoteListView)
 		, m_pRemoteListView(pRemoteListView),
 		  m_pFileDataObject(new wxFileDataObject()),
 		  m_pRemoteDataObject(new CRemoteDataObject()),
@@ -181,7 +178,7 @@ public:
 
 	virtual bool OnDrop(wxCoord x, wxCoord y)
 	{
-		CListCtrlDropTarget::OnDrop(x, y);
+		CScrollableDropTarget<wxListCtrlEx>::OnDrop(x, y);
 		ClearDropHighlight();
 
 		if (!m_pRemoteListView->m_pDirectoryListing)
@@ -190,9 +187,10 @@ public:
 		return true;
 	}
 
-	virtual void DisplayDropHighlight(wxPoint point)
+	virtual int DisplayDropHighlight(wxPoint point)
 	{
 		DoDisplayDropHighlight(point);
+		return -1;
 	}
 
 	int DoDisplayDropHighlight(wxPoint point)
@@ -240,7 +238,7 @@ public:
 
 	virtual wxDragResult OnDragOver(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		def = CListCtrlDropTarget::OnDragOver(x, y, def);
+		def = CScrollableDropTarget<wxListCtrlEx>::OnDragOver(x, y, def);
 
 		if (def == wxDragError ||
 			def == wxDragNone ||
@@ -271,13 +269,13 @@ public:
 
 	virtual void OnLeave()
 	{
-		CListCtrlDropTarget::OnLeave();
+		CScrollableDropTarget<wxListCtrlEx>::OnLeave();
 		ClearDropHighlight();
 	}
 
 	virtual wxDragResult OnEnter(wxCoord x, wxCoord y, wxDragResult def)
 	{
-		def = CListCtrlDropTarget::OnEnter(x, y, def);
+		def = CScrollableDropTarget<wxListCtrlEx>::OnEnter(x, y, def);
 		return OnDragOver(x, y, def);
 	}
 
@@ -1349,8 +1347,7 @@ void CRemoteListView::OnMenuMkdirChgDir(wxCommandEvent&)
 // Returns the name of the new directory
 CServerPath CRemoteListView::MenuMkdir()
 {
-	if (!m_pDirectoryListing || !m_pState->IsRemoteIdle())
-	{
+	if (!m_pDirectoryListing || !m_pState->IsRemoteIdle()) {
 		wxBell();
 		return CServerPath();
 	}
@@ -1365,8 +1362,7 @@ CServerPath CRemoteListView::MenuMkdir()
 	// replace it with "New directory" later. This way we get the exact position of
 	// "New directory" and can preselect it in the dialog.
 	wxString tmpName = _T("25CF809E56B343b5A12D1F0466E3B37A49A9087FDCF8412AA9AF8D1E849D01CF");
-	if (path.AddSegment(tmpName))
-	{
+	if (path.AddSegment(tmpName)) {
 		wxString pathName = path.GetPath();
 		int pos = pathName.Find(tmpName);
 		wxASSERT(pos != -1);
@@ -1389,8 +1385,7 @@ CServerPath CRemoteListView::MenuMkdir()
 	}
 
 	path = m_pDirectoryListing->path;
-	if (!path.ChangePath(dlg.GetValue()))
-	{
+	if (!path.ChangePath(dlg.GetValue())) {
 		wxBell();
 		return CServerPath();
 	}
@@ -1403,8 +1398,7 @@ CServerPath CRemoteListView::MenuMkdir()
 
 void CRemoteListView::OnMenuDelete(wxCommandEvent&)
 {
-	if (!m_pState->IsRemoteIdle())
-	{
+	if (!m_pState->IsRemoteIdle()) {
 		wxBell();
 		return;
 	}
@@ -1414,8 +1408,7 @@ void CRemoteListView::OnMenuDelete(wxCommandEvent&)
 	bool selected_link = false;
 
 	long item = -1;
-	for (;;)
-	{
+	for (;;) {
 		item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
 		if (!item)
 			continue;
@@ -1565,10 +1558,8 @@ void CRemoteListView::OnKeyDown(wxKeyEvent& event)
 #endif
 
 	int code = event.GetKeyCode();
-	if (code == WXK_DELETE || code == WXK_NUMPAD_DELETE)
-	{
-		if (GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) == -1)
-		{
+	if (code == WXK_DELETE || code == WXK_NUMPAD_DELETE) {
+		if (GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) == -1) {
 			wxBell();
 			return;
 		}
@@ -1577,21 +1568,21 @@ void CRemoteListView::OnKeyDown(wxKeyEvent& event)
 		OnMenuDelete(tmp);
 		return;
 	}
-	else if (code == WXK_F2)
-	{
+	else if (code == WXK_F2) {
 		wxCommandEvent tmp;
 		OnMenuRename(tmp);
 	}
-	else if (code == WXK_RIGHT && event.GetModifiers() == CursorModifierKey)
-	{
+	else if (code == WXK_RIGHT && event.GetModifiers() == CursorModifierKey) {
 		wxListEvent evt;
 		evt.m_itemIndex = GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_FOCUSED);
 		OnItemActivated(evt);
 	}
-	else if (code == WXK_DOWN && event.GetModifiers() == CursorModifierKey)
-	{
+	else if (code == WXK_DOWN && event.GetModifiers() == CursorModifierKey) {
 		wxCommandEvent cmdEvent;
 		OnMenuDownload(cmdEvent);
+	}
+	else if (code == 'N' && event.GetModifiers() == (wxMOD_CONTROL | wxMOD_SHIFT)) {
+		MenuMkdir();
 	}
 	else
 		event.Skip();
@@ -2773,8 +2764,7 @@ void CRemoteListView::OnNavigationEvent(bool forward)
 
 void CRemoteListView::OnMenuNewfile(wxCommandEvent&)
 {
-	if (!m_pState->IsRemoteIdle())
-	{
+	if (!m_pState->IsRemoteIdle() || !m_pDirectoryListing) {
 		wxBell();
 		return;
 	}
@@ -2786,34 +2776,16 @@ void CRemoteListView::OnMenuNewfile(wxCommandEvent&)
 	if (dlg.ShowModal() != wxID_OK)
 		return;
 
-	if (dlg.GetValue().empty())
-	{
+	if (dlg.GetValue().empty()) {
 		wxBell();
 		return;
 	}
 
 	wxString newFileName = dlg.GetValue();
 
-	// Copied from elsewhere in the source, checks for characters that Windows deems invalid
-	if ((newFileName.Find('/')  != -1) ||
-		(newFileName.Find('\\') != -1) ||
-		(newFileName.Find(':')  != -1) ||
-		(newFileName.Find('*')  != -1) ||
-		(newFileName.Find('?')  != -1) ||
-		(newFileName.Find('"')  != -1) ||
-		(newFileName.Find('<')  != -1) ||
-		(newFileName.Find('>')  != -1) ||
-		(newFileName.Find('|')  != -1))
-	{
-		wxMessageBoxEx(_("Filename may not contain any of the following characters: / \\ : * ? \" < > |"), _("Invalid filename"), wxICON_EXCLAMATION);
-		return;
-	}
-
 	// Check if target file already exists
-	for (unsigned int i = 0; i < m_pDirectoryListing->GetCount(); i++)
-	{
-		if (newFileName == (*m_pDirectoryListing)[i].name)
-		{
+	for (unsigned int i = 0; i < m_pDirectoryListing->GetCount(); ++i) {
+		if (newFileName == (*m_pDirectoryListing)[i].name) {
 			wxMessageBoxEx(_("Target filename already exists!"));
 			return;
 		}
@@ -2832,8 +2804,7 @@ void CRemoteListView::OnMenuNewfile(wxCommandEvent&)
 	}
 
 	const CServer* pServer = m_pState->GetServer();
-	if (!pServer)
-	{
+	if (!pServer) {
 		wxBell();
 		return;
 	}

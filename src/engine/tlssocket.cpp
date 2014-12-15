@@ -1,4 +1,5 @@
 #include <filezilla.h>
+#include "engineprivate.h"
 #include "tlssocket.h"
 #include "ControlSocket.h"
 
@@ -8,7 +9,7 @@
 
 char const ciphers[] = "SECURE256:+SECURE128:+ARCFOUR-128:-3DES-CBC:-MD5:+SIGN-ALL:-SIGN-RSA-MD5:+CTYPE-X509:-CTYPE-OPENPGP:-VERS-SSL3.0";
 
-#define TLSDEBUG 1
+#define TLSDEBUG 0
 #if TLSDEBUG
 // This is quite ugly
 CControlSocket* pLoggingControlSocket;

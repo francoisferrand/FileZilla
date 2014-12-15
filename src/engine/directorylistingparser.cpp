@@ -5,10 +5,6 @@
 #include <algorithm>
 #include <vector>
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
 std::map<wxString, int> CDirectoryListingParser::m_MonthNamesMap;
 
 //#define LISTDEBUG_MVS
@@ -329,27 +325,23 @@ public:
 
 	bool GetToken(unsigned int n, CToken &token, bool toEnd = false, bool include_whitespace = false)
 	{
-		if (!toEnd)
-		{
-			if (m_Tokens.size() > n)
-			{
+		n += offset_;
+		if (!toEnd) {
+			if (m_Tokens.size() > n) {
 				token = *(m_Tokens[n]);
 				return true;
 			}
 
 			int start = m_parsePos;
-			while (m_parsePos < m_len)
-			{
-				if (m_pLine[m_parsePos] == ' ' || m_pLine[m_parsePos] == '\t')
-				{
+			while (m_parsePos < m_len) {
+				if (m_pLine[m_parsePos] == ' ' || m_pLine[m_parsePos] == '\t') {
 					CToken *pToken = new CToken(m_pLine + start, m_parsePos - start);
 					m_Tokens.push_back(pToken);
 
 					while (m_parsePos < m_len && (m_pLine[m_parsePos] == ' ' || m_pLine[m_parsePos] == '\t'))
 						++m_parsePos;
 
-					if (m_Tokens.size() > n)
-					{
+					if (m_Tokens.size() > n) {
 						token = *(m_Tokens[n]);
 						return true;
 					}
@@ -358,56 +350,45 @@ public:
 				}
 				++m_parsePos;
 			}
-			if (m_parsePos != start)
-			{
+			if (m_parsePos != start) {
 				CToken *pToken = new CToken(m_pLine + start, m_parsePos - start);
 					m_Tokens.push_back(pToken);
 			}
 
-			if (m_Tokens.size() > n)
-			{
+			if (m_Tokens.size() > n) {
 				token = *(m_Tokens[n]);
 				return true;
 			}
 
 			return false;
 		}
-		else
-		{
-			if (include_whitespace)
-			{
+		else {
+			if (include_whitespace) {
 				const wxChar* p;
-				if (!n)
-				{
-					CToken ref;
-					if (!GetToken(n, ref))
-						return false;
-					p = ref.GetToken() + ref.GetLength() + 1;
-				}
-				else
-				{
-					CToken ref;
-					if (!GetToken(n - 1, ref))
-						return false;
-					p = ref.GetToken() + ref.GetLength() + 1;
-				}
+
+				int prev = n - offset_;
+				if (prev)
+					--prev;
+
+				CToken ref;
+				if (!GetToken(prev, ref))
+					return false;
+				p = ref.GetToken() + ref.GetLength() + 1;
 
 				token = CToken(p, m_len - (p - m_pLine));
 				return true;
 			}
 
-			if (m_LineEndTokens.size() > n)
-			{
+			if (m_LineEndTokens.size() > n) {
 				token = *(m_LineEndTokens[n]);
 				return true;
 			}
 
 			if (m_Tokens.size() <= n)
-				if (!GetToken(n, token))
+				if (!GetToken(n - offset_, token))
 					return false;
 
-			for (unsigned int i = static_cast<unsigned int>(m_LineEndTokens.size()); i <= n; ++i)
-			{
+			for (unsigned int i = static_cast<unsigned int>(m_LineEndTokens.size()); i <= n; ++i) {
 				const CToken *refToken = m_Tokens[i];
 				const wxChar* p = refToken->GetToken();
 				CToken *pToken = new CToken(p, m_len - (p - m_pLine) - m_trailing_whitespace);
@@ -429,6 +410,11 @@ public:
 		return new CLine(p, m_len + pLine->m_len + 1, pLine->m_trailing_whitespace);
 	}
 
+	void SetTokenOffset(unsigned int offset)
+	{
+		offset_ = offset;
+	}
+
 protected:
 	std::vector<CToken *> m_Tokens;
 	std::vector<CToken *> m_LineEndTokens;
@@ -436,9 +422,10 @@ protected:
 	int m_len;
 	int m_trailing_whitespace;
 	wxChar* m_pLine;
+	unsigned int offset_{};
 };
 
-CDirectoryListingParser::CDirectoryListingParser(CControlSocket* pControlSocket, const CServer& server, listingEncoding::type encoding)
+CDirectoryListingParser::CDirectoryListingParser(CControlSocket* pControlSocket, const CServer& server, listingEncoding::type encoding, bool sftp_mode)
 	: m_pControlSocket(pControlSocket)
 	, m_currentOffset(0)
 	, m_totalData()
@@ -447,9 +434,10 @@ CDirectoryListingParser::CDirectoryListingParser(CControlSocket* pControlSocket,
 	, m_fileListOnly(true)
 	, m_maybeMultilineVms(false)
 	, m_listingEncoding(encoding)
+	, sftp_mode_(sftp_mode)
+	, today_(wxDateTime::Today())
 {
-	if (m_MonthNamesMap.empty())
-	{
+	if (m_MonthNamesMap.empty()) {
 		//Fill the month names map
 
 		//English month names
@@ -691,31 +679,30 @@ bool CDirectoryListingParser::ParseData(bool partial)
 
 	bool error = false;
 	CLine *pLine = GetLine(partial, error);
-	while (pLine)
-	{
+	while (pLine) {
 		bool res = ParseLine(pLine, m_server.GetType(), false);
-		if (!res)
-		{
-			if (m_prevLine)
-			{
+		if (!res) {
+			if (m_prevLine) {
 				CLine* pConcatenatedLine = m_prevLine->Concat(pLine);
 				bool res = ParseLine(pConcatenatedLine, m_server.GetType(), true);
 				delete pConcatenatedLine;
 				delete m_prevLine;
 
-				if (res)
-				{
+				if (res) {
 					delete pLine;
 					m_prevLine = 0;
 				}
 				else
 					m_prevLine = pLine;
 			}
-			else
+			else if (!sftp_mode_) {
 				m_prevLine = pLine;
+			}
+			else {
+				delete pLine;
+			}
 		}
-		else
-		{
+		else {
 			delete m_prevLine;
 			m_prevLine = 0;
 			delete pLine;
@@ -732,14 +719,12 @@ CDirectoryListing CDirectoryListingParser::Parse(const CServerPath &path)
 	listing.path = path;
 	listing.m_firstListTime = CMonotonicTime::Now();
 
-	if (!ParseData(false))
-	{
+	if (!ParseData(false)){
 		listing.m_flags |= CDirectoryListing::listing_failed;
 		return listing;
 	}
 
-	if (!m_fileList.empty())
-	{
+	if (!m_fileList.empty()) {
 		wxASSERT(m_entryList.empty());
 
 		listing.SetCount(m_fileList.size());
@@ -753,8 +738,7 @@ CDirectoryListing CDirectoryListingParser::Parse(const CServerPath &path)
 			listing[i] = entry;
 		}
 	}
-	else
-	{
+	else {
 		listing.Assign(m_entryList);
 	}
 
@@ -763,18 +747,22 @@ CDirectoryListing CDirectoryListingParser::Parse(const CServerPath &path)
 
 bool CDirectoryListingParser::ParseLine(CLine *pLine, const enum ServerType serverType, bool concatenated)
 {
-	CDirentry entry;
+	CRefcountObject<CDirentry> refEntry;
+	CDirentry & entry = refEntry.Get();
+
 	bool res;
 	int ires;
 
-	if (serverType == ZVM)
-	{
+	if (sftp_mode_) {
+		pLine->SetTokenOffset(1);
+	}
+
+	if (serverType == ZVM) {
 		res = ParseAsZVM(pLine, entry);
 		if (res)
 			goto done;
 	}
-	else if (serverType == HPNONSTOP)
-	{
+	else if (serverType == HPNONSTOP) {
 		res = ParseAsHPNonstop(pLine, entry);
 		if (res)
 			goto done;
@@ -839,17 +827,14 @@ bool CDirectoryListingParser::ParseLine(CLine *pLine, const enum ServerType serv
 	// If parsing finishes and no entries could be parsed and none of the lines
 	// contained a space, assume it's a raw filelisting.
 
-	if (!concatenated)
-	{
+	if (!concatenated) {
 		CToken token;
-		if (!pLine->GetToken(0, token, true) || token.Find(' ') != -1)
-		{
+		if (!pLine->GetToken(0, token, true) || token.Find(' ') != -1) {
 			m_maybeMultilineVms = false;
 			m_fileList.clear();
 			m_fileListOnly = false;
 		}
-		else
-		{
+		else {
 			m_maybeMultilineVms = token.Find(';') != -1;
 			if (m_fileListOnly)
 				m_fileList.emplace_back(token.GetString());
@@ -869,17 +854,36 @@ done:
 	if (entry.name == _T(".") || entry.name == _T(".."))
 		return true;
 
-	if (serverType == VMS && entry.is_dir())
-	{
+	if (serverType == VMS && entry.is_dir()) {
 		// Trim version information from directories
 		int pos = entry.name.Find(';', true);
 		if (pos > 0)
 			entry.name = entry.name.Left(pos);
 	}
 
-	entry.time += wxTimeSpan( 0, m_server.GetTimezoneOffset(), 0, 0);
+	if (sftp_mode_) {
+		pLine->SetTokenOffset(0);
 
-	m_entryList.emplace_back(std::move(entry));
+		CToken t;
+		if (pLine->GetToken(0, t)) {
+			wxLongLong seconds = t.GetNumber();
+			if (seconds > 0 && seconds.GetValue() <= 0xffffffffll) {
+				CDateTime time(wxDateTime(static_cast<time_t>(seconds.GetValue())), CDateTime::seconds);
+				if (time.IsValid()) {
+					entry.time = time;
+				}
+			}
+		}
+	}
+
+	{
+		auto const timezoneOffset = m_server.GetTimezoneOffset();
+		if (timezoneOffset) {
+			entry.time += wxTimeSpan(0, timezoneOffset, 0, 0);
+		}
+	}
+
+	m_entryList.emplace_back(std::move(refEntry));
 
 skip:
 	m_maybeMultilineVms = false;
@@ -2082,7 +2086,8 @@ CLine *CDirectoryListingParser::GetLine(bool breakAtEnd /*=false*/, bool &error)
 		m_currentOffset = currentOffset;
 
 		// Reslen is now the length of the line, including any terminating whitespace
-		char *res = new char[reslen + 1];
+		int const buflen = reslen + 1;
+		char *res = new char[buflen];
 		res[reslen] = 0;
 
 		int respos = 0;
@@ -2121,14 +2126,13 @@ CLine *CDirectoryListingParser::GetLine(bool breakAtEnd /*=false*/, bool &error)
 		else
 			m_DataList.erase(m_DataList.begin(), iter);
 
+		size_t lineLength{};
 		wxChar* buffer;
-		if (m_pControlSocket)
-		{
-			buffer = m_pControlSocket->ConvToLocalBuffer(res);
+		if (m_pControlSocket) {
+			buffer = m_pControlSocket->ConvToLocalBuffer(res, buflen, lineLength);
 			m_pControlSocket->LogMessageRaw(MessageType::RawList, buffer);
 		}
-		else
-		{
+		else {
 			wxString str(res, wxConvUTF8);
 			if (str.empty())
 			{
@@ -2136,18 +2140,18 @@ CLine *CDirectoryListingParser::GetLine(bool breakAtEnd /*=false*/, bool &error)
 				if (str.empty())
 					str = wxString(res, wxConvISO8859_1);
 			}
+			lineLength = str.Len() + 1;
 			buffer = new wxChar[str.Len() + 1];
 			wxStrcpy(buffer, str.c_str());
 		}
 		delete [] res;
 
-		if (!buffer)
-		{
+		if (!buffer) {
 			// Line contained no usable data, start over
 			continue;
 		}
 
-		return new CLine(buffer, -1, emptylen);
+		return new CLine(buffer, lineLength - 1, emptylen);
 	}
 
 	return 0;
@@ -2603,11 +2607,9 @@ int CDirectoryListingParser::ParseAsMlsd(CLine *pLine, CDirentry &entry)
 	wxString ownerGroup;
 	wxString permissions;
 
-	while (!facts.empty())
-	{
+	while (!facts.empty()) {
 		int delim = facts.Find(';');
-		if (delim < 3)
-		{
+		if (delim < 3) {
 			if (delim != -1)
 				return 0;
 			else
@@ -2621,8 +2623,7 @@ int CDirectoryListingParser::ParseAsMlsd(CLine *pLine, CDirentry &entry)
 		wxString factname = facts.Left(pos);
 		MakeLowerAscii(factname);
 		wxString value = facts.Mid(pos + 1, delim - pos - 1);
-		if (factname == _T("type"))
-		{
+		if (factname == _T("type")) {
 			int pos = value.Find(':');
 			wxString valuePrefix;
 			if (pos == -1)
@@ -2645,8 +2646,7 @@ int CDirectoryListingParser::ParseAsMlsd(CLine *pLine, CDirentry &entry)
 				return 2;
 			}
 		}
-		else if (factname == _T("size"))
-		{
+		else if (factname == _T("size")) {
 			entry.size = 0;
 
 			for (unsigned int i = 0; i < value.Len(); ++i)
@@ -2660,25 +2660,38 @@ int CDirectoryListingParser::ParseAsMlsd(CLine *pLine, CDirentry &entry)
 		else if (factname == _T("modify") ||
 			(!entry.has_date() && factname == _T("create")))
 		{
-			wxDateTime dateTime;
-			const wxChar* time = dateTime.ParseFormat(value, _T("%Y%m%d"));
-
-			if (!time)
-				return 0;
-
-			if (*time) {
-				if (!dateTime.ParseFormat(time, _T("%H%M%S"), dateTime))
-					return 0;
-				entry.time = CDateTime(dateTime.FromTimezone(wxDateTime::UTC), CDateTime::seconds);
+			wxChar const* fmt;
+			CDateTime::Accuracy accuracy;
+			if (value.size() >= 14) {
+				fmt = _T("%Y%m%d%H%M%S");
+				accuracy = CDateTime::seconds;
+			}
+			else if (value.size() >= 12) {
+				fmt = _T("%Y%m%d%H%M");
+				accuracy = CDateTime::minutes;
+			}
+			else if (value.size() >= 10) {
+				fmt = _T("%Y%m%d%H");
+				accuracy = CDateTime::hours;
 			}
 			else {
-				entry.time = CDateTime(dateTime.FromTimezone(wxDateTime::UTC), CDateTime::days);
+				fmt = _T("%Y%m%d");
+				accuracy = CDateTime::days;
+			}
+
+			wxDateTime dateTime(today_);
+			if (!dateTime.ParseFormat(value, fmt))
+				return 0;
+
+			if (accuracy != CDateTime::days) {
+				entry.time = CDateTime(dateTime.FromTimezone(wxDateTime::UTC), accuracy);
+			}
+			else {
+				entry.time = CDateTime(dateTime, accuracy);
 			}
 		}
-		else if (factname == _T("perm"))
-		{
-			if (!value.empty())
-			{
+		else if (factname == _T("perm")) {
+			if (!value.empty()) {
 				if (!permissions.empty())
 					permissions = value + _T(" (") + permissions + _T(")");
 				else

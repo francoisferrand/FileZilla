@@ -18,10 +18,6 @@
 	#endif
 #endif
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
 COptions* COptions::m_theOptions = 0;
 
 enum Type
@@ -81,6 +77,7 @@ static const t_Option options[OPTIONS_NUM] =
 	{ "Speedlimit inbound", number, _T("100"), normal },
 	{ "Speedlimit outbound", number, _T("20"), normal },
 	{ "Speedlimit burst tolerance", number, _T("0"), normal },
+	{ "Preallocate space", number, _T("0"), normal },
 	{ "View hidden files", number, _T("0"), normal },
 	{ "Preserve timestamps", number, _T("0"), normal },
 	{ "Socket recv buffer size (v2)", number, _T("4194304"), normal }, // Make it large enough by default
@@ -100,6 +97,7 @@ static const t_Option options[OPTIONS_NUM] =
 	{ "Proxy password", string, _T(""), normal },
 	{ "Logging file", string, _T(""), normal },
 	{ "Logging filesize limit", number, _T("10"), normal },
+	{ "Logging show detailed logs", number, _T("0"), internal },
 	{ "Size format", number, _T("0"), normal },
 	{ "Size thousands separator", number, _T("1"), normal },
 	{ "Size decimal places", number, _T("1"), normal },
@@ -120,7 +118,6 @@ static const t_Option options[OPTIONS_NUM] =
 	{ "Last automatic update check", string, _T(""), normal },
 	{ "Update Check New Version", string, _T(""), normal },
 	{ "Update Check Check Beta", number, _T("0"), normal },
-	{ "Update Check Download Dir", string, _T(""), normal },
 	{ "Show debug menu", number, _T("0"), normal },
 	{ "File exists action download", number, _T("0"), normal },
 	{ "File exists action upload", number, _T("0"), normal },
@@ -197,6 +194,26 @@ BEGIN_EVENT_TABLE(COptions, wxEvtHandler)
 EVT_TIMER(wxID_ANY, COptions::OnTimer)
 END_EVENT_TABLE()
 
+t_OptionsCache& t_OptionsCache::operator=(wxString const& v)
+{
+	strValue = v;
+	long l;
+	if (v.ToLong(&l)) {
+		numValue = l;
+	}
+	else {
+		numValue = 0;
+	}
+	return *this;
+}
+
+t_OptionsCache& t_OptionsCache::operator=(int v)
+{
+	numValue = v;
+	strValue.Printf("%d", v);
+	return *this;
+}
+
 COptions::COptions()
 {
 	m_theOptions = this;
@@ -249,9 +266,7 @@ int COptions::GetOptionVal(unsigned int nID)
 	if (nID >= OPTIONS_NUM)
 		return 0;
 
-	if (options[nID].type != number)
-		return 0;
-
+	wxCriticalSectionLocker l(m_sync_);
 	return m_optionsCache[nID].numValue;
 }
 
@@ -260,9 +275,7 @@ wxString COptions::GetOption(unsigned int nID)
 	if (nID >= OPTIONS_NUM)
 		return wxString();
 
-	if (options[nID].type != string)
-		return wxString::Format(_T("%d"), GetOptionVal(nID));
-
+	wxCriticalSectionLocker l(m_sync_);
 	return m_optionsCache[nID].strValue;
 }
 
@@ -300,11 +313,18 @@ void COptions::ContinueSetOption(unsigned int nID, T const& value)
 {
 	T validated = Validate(nID, value);
 
-	if (m_optionsCache[nID] == validated) {
-		// Nothing to do
-		return;
+	{
+		wxCriticalSectionLocker l(m_sync_);
+		if (m_optionsCache[nID] == validated) {
+			// Nothing to do
+			return;
+		}
+		m_optionsCache[nID] = validated;
 	}
-	m_optionsCache[nID] = validated;
+
+	// Fixme: Setting options from other threads
+	if (!wxIsMainThread())
+		return;
 
 	if (options[nID].flags == normal || options[nID].flags == default_priority) {
 		SetXmlValue(nID, validated);
@@ -321,6 +341,7 @@ bool COptions::OptionFromFzDefaultsXml(unsigned int nID)
 	if (nID >= OPTIONS_NUM)
 		return false;
 
+	wxCriticalSectionLocker l(m_sync_);
 	return m_optionsCache[nID].from_default;
 }
 
@@ -344,10 +365,10 @@ TiXmlElement* COptions::CreateSettingsXmlElement()
 
 	for (int i = 0; i < OPTIONS_NUM; ++i) {
 		if (options[i].type == string) {
-			SetXmlValue(i, m_optionsCache[i].strValue);
+			SetXmlValue(i, GetOption(i));
 		}
 		else {
-			SetXmlValue(i, m_optionsCache[i].numValue);
+			SetXmlValue(i, GetOptionVal(i));
 		}
 	}
 
@@ -645,9 +666,12 @@ void COptions::LoadOptionFromElement(TiXmlElement* pOption, std::map<std::string
 		}
 
 		if (options[iter->second].flags == default_priority) {
-			if (allowDefault)
+			if (allowDefault) {
+				wxCriticalSectionLocker l(m_sync_);
 				m_optionsCache[iter->second].from_default = true;
+			}
 			else {
+				wxCriticalSectionLocker l(m_sync_);
 				if (m_optionsCache[iter->second].from_default)
 					return;
 			}
@@ -657,11 +681,13 @@ void COptions::LoadOptionFromElement(TiXmlElement* pOption, std::map<std::string
 			long numValue = 0;
 			value.ToLong(&numValue);
 			numValue = Validate(iter->second, numValue);
-			m_optionsCache[iter->second].numValue = numValue;
+			wxCriticalSectionLocker l(m_sync_);
+			m_optionsCache[iter->second] = numValue;
 		}
 		else {
 			value = Validate(iter->second, value);
-			m_optionsCache[iter->second].strValue = value;
+			wxCriticalSectionLocker l(m_sync_);
+			m_optionsCache[iter->second] = value;
 		}
 	}
 }
@@ -826,14 +852,9 @@ CLocalPath COptions::InitSettingsDir()
 
 void COptions::SetDefaultValues()
 {
+	wxCriticalSectionLocker l(m_sync_);
 	for (int i = 0; i < OPTIONS_NUM; ++i) {
-		if (options[i].type == string)
-			m_optionsCache[i].strValue = options[i].defaultValue;
-		else {
-			long numValue = 0;
-			options[i].defaultValue.ToLong(&numValue);
-			m_optionsCache[i].numValue = numValue;
-		}
+		m_optionsCache[i] = options[i].defaultValue;
 		m_optionsCache[i].from_default = false;
 	}
 }

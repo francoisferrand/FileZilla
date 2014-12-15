@@ -10,6 +10,25 @@ Legend:
     *nix: Unix (e.g BSD) and Unix-like systems (e.g. Linux)
     OS X: Apple Mac OS X
 
+3.10.0-beta2 (2014-12-05)
+
+- Fixed uploads constantly timing out
+- Log abbreviation now works correctly when cancelling a pending connection retry
+- Fixed a timing issue in the updater. Users of 3.10.0-beta1 need to update manually.
+- Speed limits no longer reset when opening the settings dialog
+- Fix reporting of transfer progress
+- Theme preview in the settings dialog now properly displays non-standard theme sizes
+
+3.10.0-beta1 (2014-12-03)
+
++ FTP over TLS is now used by default if the server supports it. Use of plain FTP can be enforced for a server in the Site Manager
++ Connection handling and transferring files has been moved into its own thread to improve GUI responsivenes
++ The message log now only shows abbreviated logs unless an error occurs
++ Added option to pre-allocate disk space when downloading files
++ Files editing can now be started from the search dialog
++ Directory trees and the Site Manager tree can now be drag-scrolled
++ *nix: FileZilla no longer depends on libidn if getaddrinfo supports AI_IDN
+
 3.9.0.6 (2014-10-16)
 
 ! Disabled support for legacy SSL 3.0 to address the POODLE vulnerability in SSLv3. (CVE-2014-3566)
@@ -49,7 +68,7 @@ Legend:
 - OS X: Manually handle CMD+X, CMD+C, CMD+V and CMD+A in the path combo boxes
 - OS X: Creating new tabs selects the newly created tab again
 - Detect some types TLS error conditions earlier instead of waiting for a timeout
-- Small performance imprvement for TLS handshakes
+- Small performance improvement for TLS handshakes
 - Do not show error message if "Create and enter" is used with synchronized browsing enabled
 
 3.9.0.1 (2014-07-22)
