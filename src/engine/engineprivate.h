@@ -7,6 +7,7 @@
 #include "event.h"
 #include "event_handler.h"
 #include "FileZillaEngine.h"
+#include "mutex.h"
 #include "option_change_event_handler.h"
 
 class CControlSocket;
@@ -31,7 +32,7 @@ public:
 	CTransferStatusManager(CTransferStatusManager const&) = delete;
 	CTransferStatusManager& operator=(CTransferStatusManager const&) = delete;
 
-	bool Empty();
+	bool empty();
 
 	void Init(wxFileOffset totalSize, wxFileOffset startOffset, bool list);
 	void Reset();
@@ -39,12 +40,12 @@ public:
 	void SetMadeProgress();
 	void Update(wxFileOffset transferredBytes);
 
-	bool Get(CTransferStatus &status, bool &changed);
+	CTransferStatus Get(bool &changed);
 
 protected:
-	wxCriticalSection mutex_;
+	mutex mutex_;
 
-	std::unique_ptr<CTransferStatus> status_;
+	CTransferStatus status_;
 	int send_state_{};
 
 	CFileZillaEnginePrivate& engine_;
@@ -72,7 +73,7 @@ public:
 	bool SetAsyncRequestReply(std::unique_ptr<CAsyncRequestNotification> && pNotification);
 	unsigned int GetNextAsyncRequestNumber();
 
-	bool GetTransferStatus(CTransferStatus &status, bool &changed);
+	CTransferStatus GetTransferStatus(bool &changed);
 
 	int CacheLookup(CServerPath const& path, CDirectoryListing& listing);
 
@@ -102,15 +103,15 @@ public:
 
 	int GetEngineId() const {return m_engine_id; }
 
-	CEventLoop& event_loop_;
 	CSocketEventDispatcher& socket_event_dispatcher_;
 
 	CTransferStatusManager transfer_status_;
 protected:
-	virtual void OnOptionChanged(int option);
+	virtual void OnOptionsChanged(changed_options_t const& options);
 
 	void SendQueuedLogs(bool reset_flag = false);
 	void ClearQueuedLogs(bool reset_flag);
+	bool ShouldQueueLogsFromOptions() const;
 
 	int CheckCommandPreconditions(CCommand const& command, bool checkBusy);
 
@@ -141,10 +142,10 @@ protected:
 
 	// General mutex for operations on the engine
 	// Todo: More fine-grained locking, a global mutex isn't nice
-	static wxCriticalSection mutex_;
+	static mutex mutex_;
 
 	// Used to synchronize access to the notification list
-	wxCriticalSection notification_mutex_;
+	mutex notification_mutex_;
 
 	wxEvtHandler *m_pEventHandler{};
 
@@ -199,7 +200,7 @@ protected:
 
 	CFileZillaEngine& parent_;
 
-	bool queue_logs_;
+	bool queue_logs_{true};
 	std::deque<CLogmsgNotification*> queued_logs_;
 };
 

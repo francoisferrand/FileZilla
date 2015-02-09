@@ -1,6 +1,5 @@
 #include <filezilla.h>
 #include "serverpath.h"
-#include "string_coalescer.h"
 
 #define FTP_MVS_DOUBLE_QUOTE (wxChar)0xDC
 
@@ -42,14 +41,12 @@ bool CServerPathData::operator==(const CServerPathData& cmp) const
 }
 
 CServerPath::CServerPath()
-	: m_bEmpty(true)
-	, m_type(DEFAULT)
+	: m_type(DEFAULT)
 {
 }
 
 CServerPath::CServerPath(const CServerPath &path, wxString subdir)
-	: m_bEmpty(path.m_bEmpty)
-	, m_type(path.m_type)
+	: m_type(path.m_type)
 	, m_data(path.m_data)
 {
 	if (subdir.empty())
@@ -60,8 +57,7 @@ CServerPath::CServerPath(const CServerPath &path, wxString subdir)
 }
 
 CServerPath::CServerPath(const CServerPath &path)
-	: m_bEmpty(path.m_bEmpty)
-	, m_type(path.m_type)
+	: m_type(path.m_type)
 	, m_data(path.m_data)
 {
 }
@@ -74,8 +70,6 @@ CServerPath::CServerPath(wxString const& path, ServerType type /*=DEFAULT*/)
 
 void CServerPath::clear()
 {
-	m_bEmpty = true;
-	m_type = DEFAULT;
 	m_data.clear();
 }
 
@@ -92,11 +86,9 @@ bool CServerPath::SetPath(wxString &newPath, bool isFile)
 	if (path.empty())
 		return false;
 
-	if (m_type == DEFAULT)
-	{
+	if (m_type == DEFAULT) {
 		int pos1 = path.Find(_T(":["));
-		if (pos1 != -1)
-		{
+		if (pos1 != -1) {
 			int pos2 = path.Find(']', true);
 			if (pos2 != -1 && static_cast<size_t>(pos2) == (path.Length() - 1) && !isFile)
 				m_type = VMS;
@@ -123,7 +115,6 @@ bool CServerPath::SetPath(wxString &newPath, bool isFile)
 	}
 
 	m_data.clear();
-	m_bEmpty = true;
 
 	if (!ChangePath(path, isFile))
 		return false;
@@ -135,7 +126,7 @@ bool CServerPath::SetPath(wxString &newPath, bool isFile)
 
 wxString CServerPath::GetPath() const
 {
-	if (m_bEmpty)
+	if (empty())
 		return wxString();
 
 	wxString path;
@@ -182,7 +173,7 @@ wxString CServerPath::GetPath() const
 
 bool CServerPath::HasParent() const
 {
-	if (m_bEmpty)
+	if (empty())
 		return false;
 
 	if (!traits[m_type].has_root)
@@ -193,7 +184,7 @@ bool CServerPath::HasParent() const
 
 CServerPath CServerPath::GetParent() const
 {
-	if (!HasParent())
+	if (empty() || !HasParent())
 		return CServerPath();
 
 	CServerPath parent(*this);
@@ -209,7 +200,7 @@ CServerPath CServerPath::GetParent() const
 
 wxString CServerPath::GetLastSegment() const
 {
-	if (!HasParent())
+	if (empty() || !HasParent())
 		return wxString();
 
 	if (!m_data->m_segments.empty())
@@ -242,7 +233,7 @@ wxChar* fast_sprint_number(wxChar* s, size_t n)
 
 wxString CServerPath::GetSafePath() const
 {
-	if (m_bEmpty)
+	if (empty())
 		return wxString();
 
 	#define INTLENGTH 20 // 2^64 - 1
@@ -284,10 +275,19 @@ wxString CServerPath::GetSafePath() const
 	return safepath;
 }
 
-bool CServerPath::SetSafePath(const wxString& path, bool coalesce)
+bool CServerPath::SetSafePath(const wxString& path)
+{
+	bool const ret = DoSetSafePath(path);
+	if (!ret) {
+		clear();
+	}
+
+	return ret;
+}
+
+bool CServerPath::DoSetSafePath(const wxString& path)
 {
 	CServerPathData& data = m_data.Get();
-	m_bEmpty = true;
 	data.m_prefix.clear();
 	data.m_segments.clear();
 
@@ -332,14 +332,11 @@ bool CServerPath::SetSafePath(const wxString& path, bool coalesce)
 	}
 	while (*p && *p != ' ');
 
-	if (!*p)
-	{
+	if (!*p) {
 		if (prefix_len != 0)
 			return false;
-		else
-		{
+		else {
 			// Is root directory, like / on unix like systems.
-			m_bEmpty = false;
 			return true;
 		}
 	}
@@ -353,8 +350,6 @@ bool CServerPath::SetSafePath(const wxString& path, bool coalesce)
 		*(p + prefix_len) = 0;
 		if( *p ) {
 			data.m_prefix = CSparseOptional<wxString>(p);
-			if (coalesce)
-				::Coalesce(*data.m_prefix);
 		}
 
 		p += prefix_len + 1;
@@ -384,21 +379,17 @@ bool CServerPath::SetSafePath(const wxString& path, bool coalesce)
 			return false;
 		*(p + segment_len) = 0;
 		wxString s(p);
-		if (coalesce)
-			::Coalesce(s);
 		data.m_segments.push_back(s);
 
 		p += segment_len + 1;
 	}
-
-	m_bEmpty = false;
 
 	return true;
 }
 
 bool CServerPath::SetType(ServerType type)
 {
-	if (!m_bEmpty && m_type != DEFAULT)
+	if (!empty() && m_type != DEFAULT)
 		return false;
 
 	m_type = type;
@@ -413,7 +404,7 @@ ServerType CServerPath::GetType() const
 
 bool CServerPath::IsSubdirOf(const CServerPath &path, bool cmpNoCase) const
 {
-	if (m_bEmpty || path.m_bEmpty)
+	if (empty() || path.empty())
 		return false;
 
 	if (m_type != path.m_type)
@@ -464,9 +455,6 @@ bool CServerPath::IsSubdirOf(const CServerPath &path, bool cmpNoCase) const
 
 bool CServerPath::IsParentOf(const CServerPath &path, bool cmpNoCase) const
 {
-	if (!this)
-		return false;
-
 	return path.IsSubdirOf(*this, cmpNoCase);
 }
 
@@ -478,17 +466,27 @@ bool CServerPath::ChangePath(wxString subdir)
 
 bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 {
+	bool ret = DoChangePath(subdir, isFile);
+	if (!ret) {
+		clear();
+	}
+
+	return ret;
+}
+
+bool CServerPath::DoChangePath(wxString &subdir, bool isFile)
+{
 	wxString dir = subdir;
 	wxString file;
 
-	if (dir.empty())
-	{
+	if (dir.empty()) {
 		if (empty() || isFile)
 			return false;
 		else
 			return true;
 	}
 
+	bool const was_empty = empty();
 	CServerPathData& data = m_data.Get();
 
 	switch (m_type)
@@ -504,7 +502,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 
 				if (isFile)
 				{
-					if (empty())
+					if (was_empty)
 						return false;
 
 					file = dir;
@@ -534,7 +532,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 
 			if (!Segmentize(dir, data.m_segments))
 				return false;
-			if (data.m_segments.empty() && m_bEmpty)
+			if (data.m_segments.empty() && was_empty)
 				return false;
 		}
 		break;
@@ -565,7 +563,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 
 			if (!Segmentize(dir, data.m_segments))
 				return false;
-			if (data.m_segments.empty() && m_bEmpty)
+			if (data.m_segments.empty() && was_empty)
 				return false;
 		}
 		break;
@@ -600,7 +598,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 		}
 		else if (dir.Last() == traits[m_type].right_enclosure)
 			return false;
-		else if (m_bEmpty)
+		else if (was_empty)
 			return false;
 
 		if (dir.Last() == ')') {
@@ -615,13 +613,13 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 			file = dir.Mid(pos + 1);
 			dir = dir.Left(pos);
 
-			if (!m_bEmpty && !data.m_prefix && !dir.empty())
+			if (!was_empty && !data.m_prefix && !dir.empty())
 				return false;
 
 			data.m_prefix.clear();
 		}
 		else {
-			if (!m_bEmpty && !data.m_prefix)
+			if (!was_empty && !data.m_prefix)
 			{
 				if (dir.Find('.') != -1 || !isFile)
 					return false;
@@ -650,7 +648,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 
 		if (!Segmentize(dir, data.m_segments))
 			return false;
-		if (data.m_segments.empty() && m_bEmpty)
+		if (data.m_segments.empty() && was_empty)
 			return false;
 
 		break;
@@ -658,7 +656,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 		{
 			if (dir[0] != ':')
 			{
-				if (empty())
+				if (was_empty)
 					return false;
 			}
 			else
@@ -686,7 +684,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 				data.m_segments.clear();
 				data.m_prefix.clear();
 			}
-			else if (m_bEmpty)
+			else if (was_empty)
 				return false;
 			if (dir.Left(2) == _T("//"))
 			{
@@ -705,7 +703,7 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 		{
 			if (wxString(traits[m_type].separators).Contains(dir[0]))
 				data.m_segments.clear();
-			else if (m_bEmpty)
+			else if (was_empty)
 				return false;
 
 			if (isFile && !ExtractFile(dir, file))
@@ -730,13 +728,12 @@ bool CServerPath::ChangePath(wxString &subdir, bool isFile)
 		subdir = file;
 	}
 
-	m_bEmpty = false;
 	return true;
 }
 
 bool CServerPath::operator==(const CServerPath &op) const
 {
-	if (m_bEmpty != op.m_bEmpty)
+	if (empty() != op.empty())
 		return false;
 	else if (m_type != op.m_type)
 		return false;
@@ -748,20 +745,16 @@ bool CServerPath::operator==(const CServerPath &op) const
 
 bool CServerPath::operator!=(const CServerPath &op) const
 {
-	if (!this)
-		return false;
-
 	return !(*this == op);
 }
 
 bool CServerPath::operator<(const CServerPath &op) const
 {
-	if (m_bEmpty)
-	{
-		if (!op.m_bEmpty)
+	if (empty()) {
+		if (!op.empty())
 			return false;
 	}
-	else if (op.m_bEmpty)
+	else if (op.empty())
 		return true;
 
 	if( m_data->m_prefix || op.m_data->m_prefix ) {
@@ -795,13 +788,10 @@ bool CServerPath::operator<(const CServerPath &op) const
 
 wxString CServerPath::FormatFilename(const wxString &filename, bool omitPath /*=false*/) const
 {
-	if (m_bEmpty)
+	if (empty())
 		return filename;
 
 	if (filename.empty())
-		return wxString();
-
-	if (m_bEmpty)
 		return wxString();
 
 	if (omitPath && (!traits[m_type].prefixmode || (m_data->m_prefix && *m_data->m_prefix == _T("."))))
@@ -839,7 +829,7 @@ wxString CServerPath::FormatFilename(const wxString &filename, bool omitPath /*=
 
 int CServerPath::CmpNoCase(const CServerPath &op) const
 {
-	if (m_bEmpty != op.m_bEmpty)
+	if (empty() != op.empty())
 		return 1;
 	else if (m_data->m_prefix != op.m_data->m_prefix)
 		return 1;
@@ -878,7 +868,7 @@ CServerPath CServerPath::GetCommonParent(const CServerPath& path) const
 	if (*this == path)
 		return *this;
 
-	if (m_bEmpty || path.m_bEmpty)
+	if (empty() || path.empty())
 		return CServerPath();
 
 	if (m_type != path.m_type ||
@@ -903,7 +893,6 @@ CServerPath CServerPath::GetCommonParent(const CServerPath& path) const
 	}
 
 	CServerPath parent;
-	parent.m_bEmpty = false;
 	parent.m_type = m_type;
 
 	CServerPathData& parentData = parent.m_data.Get();
@@ -1034,16 +1023,5 @@ void CServerPath::EscapeSeparators(ServerType type, wxString& subdir)
 	if (traits[type].separatorEscape) {
 		for (const wxChar* p = traits[type].separators; *p; ++p)
 			subdir.Replace((wxString)*p, (wxString)traits[type].separatorEscape + traits[type].separators[0]);
-	}
-}
-
-void CServerPath::Coalesce()
-{
-	CServerPathData& data = m_data.Get();
-	if( data.m_prefix ) {
-		::Coalesce(*data.m_prefix);
-	}
-	for (auto& segment : data.m_segments) {
-		::Coalesce(segment);
 	}
 }

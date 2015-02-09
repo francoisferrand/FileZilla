@@ -94,6 +94,7 @@
     <ClCompile Include="logging.cpp" />
     <ClCompile Include="misc.cpp" />
     <ClCompile Include="msgbox.cpp" />
+    <ClCompile Include="mutex.cpp" />
     <ClCompile Include="notification.cpp" />
     <ClCompile Include="option_change_event_handler.cpp" />
     <ClCompile Include="pathcache.cpp" />
@@ -109,7 +110,6 @@
     <ClCompile Include="socket.cpp">
       <PrecompiledHeader />
     </ClCompile>
-    <ClCompile Include="string_coalescer.cpp" />
     <ClCompile Include="timeex.cpp" />
     <ClCompile Include="tlssocket.cpp" />
     <ClCompile Include="transfersocket.cpp" />
@@ -119,6 +119,7 @@
     <ClInclude Include="..\include\event.h" />
     <ClInclude Include="..\include\event_handler.h" />
     <ClInclude Include="..\include\event_loop.h" />
+    <ClInclude Include="..\include\mutex.h" />
     <ClInclude Include="backend.h" />
     <ClInclude Include="..\include\commands.h" />
     <ClInclude Include="ControlSocket.h" />
@@ -153,7 +154,6 @@
     <ClInclude Include="sftpcontrolsocket.h" />
     <ClInclude Include="..\include\sizeformatting_base.h" />
     <ClInclude Include="..\include\socket.h" />
-    <ClInclude Include="..\include\string_coalescer.h" />
     <ClInclude Include="..\include\timeex.h" />
     <ClInclude Include="tlssocket.h" />
     <ClInclude Include="transfersocket.h" />

@@ -65,6 +65,9 @@ public:
 	CRefcountObject_Uninitialized<T>& operator=(const CRefcountObject_Uninitialized<T>& v);
 
 	bool operator!() const { return !data_; }
+	explicit operator bool() const { return data_; }
+
+	bool empty() const { return data_.get(); }
 protected:
 	std::shared_ptr<T> data_;
 };
@@ -83,8 +86,8 @@ template<class T> bool CRefcountObject<T>::operator==(T const& cmp) const
 }
 
 template<class T> CRefcountObject<T>::CRefcountObject()
+	: data_(std::make_shared<T>())
 {
-	data_ = std::make_shared<T>();
 }
 
 template<class T> CRefcountObject<T>::CRefcountObject(CRefcountObject<T> const& v)
@@ -98,8 +101,8 @@ template<class T> CRefcountObject<T>::CRefcountObject(CRefcountObject<T> && v)
 }
 
 template<class T> CRefcountObject<T>::CRefcountObject(const T& v)
+	: data_(std::make_shared<T>(v))
 {
-	data_ = std::make_shared<T>(v);
 }
 
 template<class T> T& CRefcountObject<T>::Get()
@@ -171,22 +174,21 @@ template<class T> bool CRefcountObject_Uninitialized<T>::operator==(const CRefco
 	else if (!cmp.data_) {
 		return false;
 	}
-	return *data_->get() == *cmp.data_->get();
+	return *data_.get() == *cmp.data_.get();
 }
 
 template<class T> CRefcountObject_Uninitialized<T>::CRefcountObject_Uninitialized()
 {
-	data_ = 0;
 }
 
 template<class T> CRefcountObject_Uninitialized<T>::CRefcountObject_Uninitialized(const CRefcountObject_Uninitialized<T>& v)
+	: data_(v.data_)
 {
-	data_ = v.data_;
 }
 
 template<class T> CRefcountObject_Uninitialized<T>::CRefcountObject_Uninitialized(const T& v)
+	: data_(std::make_shared<T>(v))
 {
-	data_ = std::make_shared<T>(v);
 }
 
 template<class T> T& CRefcountObject_Uninitialized<T>::Get()

@@ -3,6 +3,7 @@
 
 #include "apply.h"
 #include "event.h"
+#include "mutex.h"
 #include "timeex.h"
 
 class CEventHandler;
@@ -27,13 +28,13 @@ public:
 	void RemoveHandler(CEventHandler* handler);
 
 	timer_id AddTimer(CEventHandler* handler, int ms_interval, bool one_shot);
-	void StopTimer(CEventHandler* handler, timer_id id);
+	void StopTimer(timer_id id);
 
 protected:
 	friend class CEventHandler;
 	void SendEvent(CEventHandler* handler, CEventBase* evt);
 
-	bool ProcessTimers();
+	bool ProcessTimers(scoped_lock & l);
 	int GetNextWaitInterval();
 
 	virtual wxThread::ExitCode Entry();
@@ -44,15 +45,15 @@ protected:
 	Events pending_events_;
 	Timers timers_;
 
-	wxMutex sync_;
+	mutex sync_;
+	condition cond_;
 
-	wxCondition cond_;
 	bool signalled_{};
 	bool quit_{};
 
 	CEventHandler * active_handler_{};
 
-	virtual bool ProcessEvent();
+	bool ProcessEvent(scoped_lock & l);
 };
 
 template<typename T, typename H, typename F>

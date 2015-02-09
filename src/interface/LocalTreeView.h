@@ -1,10 +1,10 @@
 #ifndef __LOCALTREEVIEW_H__
 #define __LOCALTREEVIEW_H__
 
+#include <option_change_event_handler.h>
 #include "systemimagelist.h"
 #include "state.h"
 #include "treectrlex.h"
-#include "filelistctrl.h"
 
 class CQueueView;
 
@@ -12,7 +12,7 @@ class CQueueView;
 class CVolumeDescriptionEnumeratorThread;
 #endif
 
-class CLocalTreeView : public wxTreeCtrlEx, CSystemImageList, CStateEventHandler
+class CLocalTreeView : public wxTreeCtrlEx, CSystemImageList, CStateEventHandler, COptionChangeEventHandler
 {
 	DECLARE_CLASS(CLocalTreeView)
 
@@ -44,7 +44,8 @@ protected:
 #endif
 
 	void UpdateSortMode();
-	virtual int OnCompareItems(const wxTreeItemId& item1, const wxTreeItemId& item2);
+
+	virtual void OnOptionsChanged(changed_options_t const& options);
 
 	wxTreeItemId GetNearestParent(wxString& localDir);
 	wxTreeItemId GetSubdir(wxTreeItemId parent, const wxString& subDir);
@@ -91,7 +92,6 @@ protected:
 
 	wxTreeItemId m_contextMenuItem;
 	wxTreeItemId m_dropHighlight;
-	enum CFileListCtrlSortBase::NameSortMode m_nameSortMode;
 };
 
 #endif

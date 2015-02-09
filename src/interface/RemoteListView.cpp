@@ -391,16 +391,12 @@ CRemoteListView::CRemoteListView(wxWindow* pParent, CState *pState, CQueueView* 
 	SetDropTarget(new CRemoteListViewDropTarget(this));
 
 	EnablePrefixSearch(true);
-
-	m_pLinkResolveState = 0;
 }
 
 CRemoteListView::~CRemoteListView()
 {
 	wxString str = wxString::Format(_T("%d %d"), m_sortDirection, m_sortColumn);
 	COptions::Get()->SetOption(OPTION_REMOTEFILELIST_SORTORDER, str);
-
-	delete m_pLinkResolveState;
 }
 
 // See comment to OnGetItemText
@@ -913,8 +909,7 @@ wxString StripVMSRevision(const wxString& name)
 
 void CRemoteListView::OnItemActivated(wxListEvent &event)
 {
-	if (!m_pState->IsRemoteIdle())
-	{
+	if (!m_pState->IsRemoteIdle()) {
 		wxBell();
 		return;
 	}
@@ -923,8 +918,7 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 	bool back = false;
 
 	int item = -1;
-	for (;;)
-	{
+	for (;;) {
 		item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
 		if (item == -1)
 			break;
@@ -938,15 +932,12 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 		if (!item)
 			back = true;
 	}
-	if (!count)
-	{
+	if (!count) {
 		wxBell();
 		return;
 	}
-	if (count > 1)
-	{
-		if (back)
-		{
+	if (count > 1) {
+		if (back) {
 			wxBell();
 			return;
 		}
@@ -958,8 +949,7 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 
 	item = event.GetIndex();
 
-	if (item)
-	{
+	if (item) {
 		int index = GetItemIndex(item);
 		if (index == -1)
 			return;
@@ -970,28 +960,22 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 		const wxString& name = entry.name;
 
 		const CServer* pServer = m_pState->GetServer();
-		if (!pServer)
-		{
+		if (!pServer) {
 			wxBell();
 			return;
 		}
 
-		if (entry.is_dir())
-		{
+		if (entry.is_dir()) {
 			const int action = COptions::Get()->GetOptionVal(OPTION_DOUBLECLICK_ACTION_DIRECTORY);
-			if (action == 3)
-			{
+			if (action == 3) {
 				// No action
 				wxBell();
 				return;
 			}
 
-			if (!action)
-			{
-				if (entry.is_link())
-				{
-					delete m_pLinkResolveState;
-					m_pLinkResolveState = new t_linkResolveState;
+			if (!action) {
+				if (entry.is_link()) {
+					m_pLinkResolveState.reset(new t_linkResolveState);
 					m_pLinkResolveState->remote_path = m_pDirectoryListing->path;
 					m_pLinkResolveState->link = name;
 					m_pLinkResolveState->local_path = m_pState->GetLocalDir();
@@ -999,24 +983,20 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 				}
 				m_pState->ChangeRemoteDir(m_pDirectoryListing->path, name, entry.is_link() ? LIST_FLAG_LINK : 0);
 			}
-			else
-			{
+			else {
 				wxCommandEvent evt(0, action == 1 ? XRCID("ID_DOWNLOAD") : XRCID("ID_ADDTOQUEUE"));
 				OnMenuDownload(evt);
 			}
 		}
-		else
-		{
+		else {
 			const int action = COptions::Get()->GetOptionVal(OPTION_DOUBLECLICK_ACTION_FILE);
-			if (action == 3)
-			{
+			if (action == 3) {
 				// No action
 				wxBell();
 				return;
 			}
 
-			if (action == 2)
-			{
+			if (action == 2) {
 				// View / Edit action
 				wxCommandEvent evt;
 				OnMenuEdit(evt);
@@ -1026,8 +1006,7 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 			const bool queue_only = action == 1;
 
 			const CLocalPath local_path = m_pState->GetLocalDir();
-			if (!local_path.IsWriteable())
-			{
+			if (!local_path.IsWriteable()) {
 				wxBell();
 				return;
 			}
@@ -1041,38 +1020,32 @@ void CRemoteListView::OnItemActivated(wxListEvent &event)
 			m_pQueue->QueueFile_Finish(true);
 		}
 	}
-	else
-	{
+	else {
 		m_pState->ChangeRemoteDir(m_pDirectoryListing->path, _T(".."));
 	}
 }
 
 void CRemoteListView::OnMenuEnter(wxCommandEvent &)
 {
-	if (!m_pState->IsRemoteIdle())
-	{
+	if (!m_pState->IsRemoteIdle()) {
 		wxBell();
 		return;
 	}
 
 	int item = GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
 
-	if (GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) != -1)
-	{
+	if (GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED) != -1) {
 		wxBell();
 		return;
 	}
 
-	if (item)
-	{
+	if (item) {
 		int index = GetItemIndex(item);
-		if (index == -1)
-		{
+		if (index == -1) {
 			wxBell();
 			return;
 		}
-		if (m_fileData[index].comparison_flags == fill)
-		{
+		if (m_fileData[index].comparison_flags == fill) {
 			wxBell();
 			return;
 		}
@@ -1081,22 +1054,18 @@ void CRemoteListView::OnMenuEnter(wxCommandEvent &)
 		const wxString& name = entry.name;
 
 		const CServer* pServer = m_pState->GetServer();
-		if (!pServer)
-		{
+		if (!pServer) {
 			wxBell();
 			return;
 		}
 
-		if (!entry.is_dir())
-		{
+		if (!entry.is_dir()) {
 			wxBell();
 			return;
 		}
 
-		if (entry.is_link())
-		{
-			delete m_pLinkResolveState;
-			m_pLinkResolveState = new t_linkResolveState;
+		if (entry.is_link()) {
+			m_pLinkResolveState.reset(new t_linkResolveState);
 			m_pLinkResolveState->remote_path = m_pDirectoryListing->path;
 			m_pLinkResolveState->link = name;
 			m_pLinkResolveState->local_path = m_pState->GetLocalDir();
@@ -1104,8 +1073,7 @@ void CRemoteListView::OnMenuEnter(wxCommandEvent &)
 		}
 		m_pState->ChangeRemoteDir(m_pDirectoryListing->path, name, entry.is_link() ? LIST_FLAG_LINK : 0);
 	}
-	else
-	{
+	else {
 		m_pState->ChangeRemoteDir(m_pDirectoryListing->path, _T(".."));
 	}
 }
@@ -2327,7 +2295,7 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 
 	long item = -1;
 
-	std::list<CDirentry> selected_item_list;
+	std::vector<CEditHandler::FileData> selected_items;
 	while ((item = GetNextItem(item, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1) {
 		if (!item) {
 			wxBell();
@@ -2344,7 +2312,7 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 			return;
 		}
 
-		selected_item_list.push_back(entry);
+		selected_items.push_back({entry.name, entry.size});
 	}
 
 	CEditHandler* pEditHandler = CEditHandler::Get();
@@ -2353,33 +2321,9 @@ void CRemoteListView::OnMenuEdit(wxCommandEvent&)
 		return;
 	}
 
-	const wxString& localDir = pEditHandler->GetLocalDirectory();
-	if (localDir.empty()) {
-		wxMessageBoxEx(_("Could not get temporary directory to download file into."), _("Cannot edit file"), wxICON_STOP);
-		return;
-	}
-
 	const CServerPath path = m_pDirectoryListing->path;
 	const CServer server = *m_pState->GetServer();
-
-	if (selected_item_list.empty()) {
-		wxBell();
-		return;
-	}
-
-	if (selected_item_list.size() > 10) {
-
-		CConditionalDialog dlg(this, CConditionalDialog::many_selected_for_edit, CConditionalDialog::yesno);
-		dlg.SetTitle(_("Confirmation needed"));
-		dlg.AddText(_("You have selected more than 10 files for editing, do you really want to continue?"));
-
-		if (!dlg.Run())
-			return;
-	}
-
-	for (auto const& entry : selected_item_list) {
-		pEditHandler->Edit(CEditHandler::remote, entry.name, path, server, entry.size, this);
-	}
+	pEditHandler->Edit(CEditHandler::remote, selected_items, path, server, this);
 }
 
 #ifdef __WXDEBUG__
@@ -2629,11 +2573,7 @@ wxLongLong CRemoteListView::ItemGetSize(int index) const
 
 void CRemoteListView::LinkIsNotDir(const CServerPath& path, const wxString& link)
 {
-	if (!m_pLinkResolveState)
-		return;
-
-	if (m_pLinkResolveState->remote_path == path && m_pLinkResolveState->link == link)
-	{
+	if (m_pLinkResolveState && m_pLinkResolveState->remote_path == path && m_pLinkResolveState->link == link) {
 		wxString localFile = CQueueView::ReplaceInvalidCharacters(link);
 		if (m_pDirectoryListing->path.GetType() == VMS && COptions::Get()->GetOptionVal(OPTION_STRIP_VMS_REVISION))
 			localFile = StripVMSRevision(localFile);
@@ -2643,8 +2583,7 @@ void CRemoteListView::LinkIsNotDir(const CServerPath& path, const wxString& link
 		m_pQueue->QueueFile_Finish(true);
 	}
 
-	delete m_pLinkResolveState;
-	m_pLinkResolveState = 0;
+	m_pLinkResolveState.reset();
 }
 
 void CRemoteListView::OnMenuGeturl(wxCommandEvent&)

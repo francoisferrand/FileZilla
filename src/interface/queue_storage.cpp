@@ -10,7 +10,7 @@
 
 #define INVALID_DATA -1
 
-enum _column_type
+enum class Column_type
 {
 	text,
 	integer
@@ -25,7 +25,7 @@ enum _column_flags
 struct _column
 {
 	const wxChar* const name;
-	_column_type type;
+	Column_type type;
 	unsigned int flags;
 };
 
@@ -53,22 +53,22 @@ namespace server_table_column_names
 }
 
 _column server_table_columns[] = {
-	{ _T("id"), integer, not_null | autoincrement },
-	{ _T("host"), text, not_null },
-	{ _T("port"), integer, 0 },
-	{ _T("user"), text, 0 },
-	{ _T("password"), text, 0 },
-	{ _T("account"), text, 0 },
-	{ _T("protocol"), integer, 0 },
-	{ _T("type"), integer, 0 },
-	{ _T("logontype"), integer, 0 },
-	{ _T("timezone_offset"), integer, 0 },
-	{ _T("transfer_mode"), text, 0 },
-	{ _T("max_connections"), integer, 0 },
-	{ _T("encoding"), text, 0 },
-	{ _T("bypass_proxy"), integer, 0 },
-	{ _T("post_login_commands"), text, 0 },
-	{ _T("name"), text, 0 }
+	{ _T("id"), Column_type::integer, not_null | autoincrement },
+	{ _T("host"), Column_type::text, not_null },
+	{ _T("port"), Column_type::integer, 0 },
+	{ _T("user"), Column_type::text, 0 },
+	{ _T("password"), Column_type::text, 0 },
+	{ _T("account"), Column_type::text, 0 },
+	{ _T("protocol"), Column_type::integer, 0 },
+	{ _T("type"), Column_type::integer, 0 },
+	{ _T("logontype"), Column_type::integer, 0 },
+	{ _T("timezone_offset"), Column_type::integer, 0 },
+	{ _T("transfer_mode"), Column_type::text, 0 },
+	{ _T("max_connections"), Column_type::integer, 0 },
+	{ _T("encoding"), Column_type::text, 0 },
+	{ _T("bypass_proxy"), Column_type::integer, 0 },
+	{ _T("post_login_commands"), Column_type::text, 0 },
+	{ _T("name"), Column_type::text, 0 }
 };
 
 namespace file_table_column_names
@@ -91,18 +91,18 @@ namespace file_table_column_names
 }
 
 _column file_table_columns[] = {
-	{ _T("id"), integer, not_null | autoincrement },
-	{ _T("server"), integer, not_null },
-	{ _T("source_file"), text, 0 },
-	{ _T("target_file"), text, 0 },
-	{ _T("local_path"), integer, 0 },
-	{ _T("remote_path"), integer, 0 },
-	{ _T("download"), integer, not_null },
-	{ _T("size"), integer, 0 },
-	{ _T("error_count"), integer, 0 },
-	{ _T("priority"), integer, 0 },
-	{ _T("ascii_file"), integer, 0 },
-	{ _T("default_exists_action"), integer, 0 }
+	{ _T("id"), Column_type::integer, not_null | autoincrement },
+	{ _T("server"), Column_type::integer, not_null },
+	{ _T("source_file"), Column_type::text, 0 },
+	{ _T("target_file"), Column_type::text, 0 },
+	{ _T("local_path"), Column_type::integer, 0 },
+	{ _T("remote_path"), Column_type::integer, 0 },
+	{ _T("download"), Column_type::integer, not_null },
+	{ _T("size"), Column_type::integer, 0 },
+	{ _T("error_count"), Column_type::integer, 0 },
+	{ _T("priority"), Column_type::integer, 0 },
+	{ _T("ascii_file"), Column_type::integer, 0 },
+	{ _T("default_exists_action"), Column_type::integer, 0 }
 };
 
 namespace path_table_column_names
@@ -115,8 +115,8 @@ namespace path_table_column_names
 }
 
 _column path_table_columns[] = {
-	{ _T("id"), integer, not_null | autoincrement },
-	{ _T("path"), text, not_null }
+	{ _T("id"), Column_type::integer, not_null | autoincrement },
+	{ _T("path"), Column_type::text, not_null }
 };
 
 struct fast_equal
@@ -339,12 +339,12 @@ wxLongLong_t CQueueStorage::Impl::SaveLocalPath(const CLocalPath& path)
 
 wxLongLong_t CQueueStorage::Impl::SaveRemotePath(const CServerPath& path)
 {
-	wxString safePath = path.GetSafePath();
+	wxString const& safePath = path.GetSafePath();
 	std::unordered_map<wxString, wxLongLong_t, wxStringHash>::const_iterator it = remotePaths_.find(safePath);
 	if (it != remotePaths_.end())
 		return it->second;
 
-	Bind(insertRemotePathQuery_, path_table_column_names::path, path.GetSafePath());
+	Bind(insertRemotePathQuery_, path_table_column_names::path, safePath);
 
 	int res;
 	do {
@@ -353,8 +353,7 @@ wxLongLong_t CQueueStorage::Impl::SaveRemotePath(const CServerPath& path)
 
 	sqlite3_reset(insertRemotePathQuery_);
 
-	if (res == SQLITE_DONE)
-	{
+	if (res == SQLITE_DONE) {
 		wxLongLong_t id = sqlite3_last_insert_rowid(db_);
 		remotePaths_[safePath] = id;
 		return id;
@@ -367,12 +366,11 @@ wxLongLong_t CQueueStorage::Impl::SaveRemotePath(const CServerPath& path)
 wxString CQueueStorage::Impl::CreateColumnDefs(_column* columns, size_t count)
 {
 	wxString query = _T("(");
-	for (unsigned int i = 0; i < count; ++i)
-	{
+	for (unsigned int i = 0; i < count; ++i) {
 		if (i)
 			query += _T(", ");
 		query += columns[i].name;
-		if (columns[i].type == integer)
+		if (columns[i].type == Column_type::integer)
 			query += _T(" INTEGER");
 		else
 			query += _T(" TEXT");
@@ -659,15 +657,11 @@ bool CQueueStorage::Impl::SaveServer(const CServerItem& item)
 		break;
 	}
 
-	const enum ServerProtocol protocol = server.GetProtocol();
-	if (protocol == FTP || protocol == FTPS || protocol == FTPES)
-	{
+	if (CServer::SupportsPostLoginCommands(server.GetProtocol())) {
 		const std::vector<wxString>& postLoginCommands = server.GetPostLoginCommands();
-		if (!postLoginCommands.empty())
-		{
+		if (!postLoginCommands.empty()) {
 			wxString commands;
-			for (std::vector<wxString>::const_iterator iter = postLoginCommands.begin(); iter != postLoginCommands.end(); ++iter)
-			{
+			for (std::vector<wxString>::const_iterator iter = postLoginCommands.begin(); iter != postLoginCommands.end(); ++iter) {
 				if (!commands.empty())
 					commands += _T("\n");
 				commands += *iter;
@@ -719,10 +713,11 @@ bool CQueueStorage::Impl::SaveFile(wxLongLong server, const CFileItem& file)
 		return true;
 
 	Bind(insertFileQuery_, file_table_column_names::source_file, file.GetSourceFile());
-	if (file.GetTargetFile().empty())
-		BindNull(insertFileQuery_, file_table_column_names::target_file);
+	auto const& targetFile = file.GetTargetFile();
+	if (targetFile)
+		Bind(insertFileQuery_, file_table_column_names::target_file, *targetFile);
 	else
-		Bind(insertFileQuery_, file_table_column_names::target_file, file.GetTargetFile());
+		BindNull(insertFileQuery_, file_table_column_names::target_file);
 
 	wxLongLong_t localPathId = SaveLocalPath(file.GetLocalPath());
 	wxLongLong_t remotePathId = SaveRemotePath(file.GetRemotePath());
@@ -742,7 +737,7 @@ bool CQueueStorage::Impl::SaveFile(wxLongLong server, const CFileItem& file)
 	else
 		BindNull(insertFileQuery_, file_table_column_names::error_count);
 	Bind(insertFileQuery_, file_table_column_names::priority, static_cast<int>(file.GetPriority()));
-	Bind(insertFileQuery_, file_table_column_names::ascii_file, file.m_transferSettings.binary ? 0 : 1);
+	Bind(insertFileQuery_, file_table_column_names::ascii_file, file.Ascii() ? 1 : 0);
 
 	if (file.m_defaultFileExistsAction != CFileExistsNotification::unknown)
 		Bind(insertFileQuery_, file_table_column_names::default_exists_action, file.m_defaultFileExistsAction);
@@ -856,11 +851,10 @@ wxLongLong_t CQueueStorage::Impl::ParseServerFromRow(CServer& server)
 	if (!server.SetHost(host, port))
 		return INVALID_DATA;
 
-	int protocol = GetColumnInt(selectServersQuery_, server_table_column_names::protocol);
+	int const protocol = GetColumnInt(selectServersQuery_, server_table_column_names::protocol);
 	if (protocol < 0 || protocol > MAX_VALUE)
 		return INVALID_DATA;
-
-	server.SetProtocol((enum ServerProtocol)protocol);
+	server.SetProtocol(static_cast<ServerProtocol>(protocol));
 
 	int type = GetColumnInt(selectServersQuery_, server_table_column_names::type);
 	if (type < 0 || type >= SERVERTYPE_MAX)
@@ -923,8 +917,7 @@ wxLongLong_t CQueueStorage::Impl::ParseServerFromRow(CServer& server)
 			return INVALID_DATA;
 	}
 
-	if (protocol == FTP || protocol == FTPS || protocol == FTPES)
-	{
+	if (CServer::SupportsPostLoginCommands(server.GetProtocol())) {
 		std::vector<wxString> postLoginCommands;
 
 		wxString commands = GetColumnText(selectServersQuery_, server_table_column_names::post_login_commands);
@@ -986,24 +979,23 @@ wxLongLong_t CQueueStorage::Impl::ParseFileFromRow(CFileItem** pItem)
 	else
 	{
 		wxLongLong size = GetColumnInt64(selectFilesQuery_, file_table_column_names::size);
-		int errorCount = GetColumnInt(selectFilesQuery_, file_table_column_names::error_count);
+		unsigned char errorCount = static_cast<unsigned char>(GetColumnInt(selectFilesQuery_, file_table_column_names::error_count));
 		int priority = GetColumnInt(selectFilesQuery_, file_table_column_names::priority, static_cast<int>(QueuePriority::normal));
 
-		bool binary = GetColumnInt(selectFilesQuery_, file_table_column_names::ascii_file) == 0;
+		bool ascii = GetColumnInt(selectFilesQuery_, file_table_column_names::ascii_file) != 0;
 		int overwrite_action = GetColumnInt(selectFilesQuery_, file_table_column_names::default_exists_action, CFileExistsNotification::unknown);
 
 		if (sourceFile.empty() || localPath.empty() ||
 			remotePath.empty() ||
 			size < -1 ||
-			priority < 0 || priority >= static_cast<int>(QueuePriority::count) ||
-			errorCount < 0)
+			priority < 0 || priority >= static_cast<int>(QueuePriority::count))
 		{
 			return INVALID_DATA;
 		}
 
 		CFileItem* fileItem = new CFileItem(0, true, download, sourceFile, targetFile, localPath, remotePath, size);
 		*pItem = fileItem;
-		fileItem->m_transferSettings.binary = binary;
+		fileItem->SetAscii(ascii);
 		fileItem->SetPriorityRaw(QueuePriority(priority));
 		fileItem->m_errorCount = errorCount;
 
@@ -1048,8 +1040,7 @@ bool CQueueStorage::SaveQueue(std::vector<CServerItem*> const& queue)
 	d_->ClearCaches();
 
 	bool ret = true;
-	if (sqlite3_exec(d_->db_, "BEGIN TRANSACTION", 0, 0, 0) == SQLITE_OK)
-	{
+	if (sqlite3_exec(d_->db_, "BEGIN TRANSACTION", 0, 0, 0) == SQLITE_OK) {
 		for (std::vector<CServerItem*>::const_iterator it = queue.begin(); it != queue.end(); ++it)
 			ret &= d_->SaveServer(**it);
 

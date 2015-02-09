@@ -9,10 +9,6 @@
 
 CQueueItem::CQueueItem(CQueueItem* parent)
 	: m_parent(parent)
-	, m_visibleOffspring(0)
-	, m_indent(0)
-	, m_maxCachedIndex(-1)
-	, m_removed_at_front(0)
 {
 }
 
@@ -30,12 +26,10 @@ void CQueueItem::SetPriority(QueuePriority priority)
 
 void CQueueItem::AddChild(CQueueItem* item)
 {
-	if (m_removed_at_front)
-	{
+	if (m_removed_at_front) {
 		m_children.erase(m_children.begin(), m_children.begin() + m_removed_at_front);
 		m_removed_at_front = 0;
 	}
-	item->m_indent = m_indent + 1;
 	m_children.push_back(item);
 
 	m_visibleOffspring += 1 + item->m_visibleOffspring;
@@ -277,33 +271,12 @@ int CQueueItem::GetItemIndex() const
 	return index + pParent->GetItemIndex();
 }
 
-const wxString& CQueueItem::GetIndent() const
-{
-	wxASSERT(m_indent < 5);
-	static const wxString indents[5] =
-	{
-		_T(""),
-		_T("  "),
-		_T("    "),
-		_T("      "),
-		_T("        ")
-	};
-	return indents[m_indent];
-}
-
 CFileItem::CFileItem(CServerItem* parent, bool queued, bool download,
 					 const wxString& sourceFile, const wxString& targetFile,
 					 const CLocalPath& localPath, const CServerPath& remotePath, wxLongLong size)
 	: CQueueItem(parent)
-	, m_errorCount(0)
-	, m_edit(CEditHandler::none)
-	, m_pEngineData(0)
-	, m_defaultFileExistsAction(CFileExistsNotification::unknown)
-	, m_onetime_action(CFileExistsNotification::unknown)
-	, flags(0)
-	, m_priority(QueuePriority::normal)
 	, m_sourceFile(sourceFile)
-	, m_targetFile(targetFile)
+	, m_targetFile(targetFile.empty() ? CSparseOptional<wxString>() : CSparseOptional<wxString>(targetFile))
 	, m_localPath(localPath)
 	, m_remotePath(remotePath)
 	, m_size(size)
@@ -373,7 +346,7 @@ void CFileItem::SaveItem(TiXmlElement* pElement) const
 		AddTextElement(file, "ErrorCount", m_errorCount);
 	if (m_priority != QueuePriority::normal)
 		AddTextElement(file, "Priority", static_cast<int>(m_priority));
-	AddTextElementRaw(file, "DataType", m_transferSettings.binary ? "1" : "0");
+	AddTextElementRaw(file, "DataType", Ascii() ? "0" : "1");
 	if (m_defaultFileExistsAction != CFileExistsNotification::unknown)
 		AddTextElement(file, "OverwriteAction", m_defaultFileExistsAction);
 }
@@ -387,13 +360,39 @@ bool CFileItem::TryRemoveAll()
 	return false;
 }
 
-void CFileItem::SetTargetFile(const wxString &file)
+void CFileItem::SetTargetFile(wxString const& file)
 {
-	wxASSERT(!file.empty());
-	if (file != m_sourceFile)
-		m_targetFile = file;
+	if (!file.empty() && file != m_sourceFile)
+		m_targetFile = CSparseOptional<wxString>(file);
 	else
 		m_targetFile.clear();
+}
+
+void CFileItem::SetStatusMessage(CFileItem::Status status)
+{
+	m_status = status;
+}
+
+wxString const& CFileItem::GetStatusMessage() const
+{
+	static wxString statusTexts[] = {
+		wxString(),
+		_("Incorrect password"),
+		_("Timeout"),
+		_("Disconnecting from previous server"),
+		_("Disconnected from server"),
+		_("Connecting"),
+		_("Connection attempt failed"),
+		_("Interrupted by user"),
+		_("Waiting for browsing connection"),
+		_("Waiting for password"),
+		_("Could not write to local file"),
+		_("Could not start transfer"),
+		_("Transferring"),
+		_("Creating directory")
+	};
+
+	return statusTexts[m_status];
 }
 
 CFolderItem::CFolderItem(CServerItem* parent, bool queued, const CLocalPath& localPath)
@@ -717,11 +716,6 @@ void CServerItem::SetChildPriority(CFileItem* pItem, QueuePriority oldPriority, 
 
 CFolderScanItem::CFolderScanItem(CServerItem* parent, bool queued, bool download, const CLocalPath& localPath, const CServerPath& remotePath)
 	: CQueueItem(parent)
-	, m_remove(false)
-	, m_active(false)
-	, m_count(0)
-	, m_defaultFileExistsAction(CFileExistsNotification::unknown)
-	, m_dir_is_empty(false)
 	, m_queued(queued)
 	, m_localPath(localPath)
 	, m_remotePath(remotePath)
@@ -859,7 +853,7 @@ wxString CQueueViewBase::OnGetItemText(CQueueItem* pItem, ColumnId column) const
 			switch (column)
 			{
 			case colLocalName:
-				return pFileItem->GetIndent() + pFileItem->GetLocalPath().GetPath() + pFileItem->GetLocalFile();
+				return _T("  ") + pFileItem->GetLocalPath().GetPath() + pFileItem->GetLocalFile();
 			case colDirection:
 				if (pFileItem->Download())
 					if (pFileItem->queued())
@@ -900,7 +894,7 @@ wxString CQueueViewBase::OnGetItemText(CQueueItem* pItem, ColumnId column) const
 				break;
 			case colTransferStatus:
 			case colErrorReason:
-				return pFileItem->m_statusMessage;
+				return pFileItem->GetStatusMessage();
 			case colTime:
 				return CTimeFormat::FormatDateTime(pItem->GetTime());
 			default:
@@ -946,7 +940,7 @@ wxString CQueueViewBase::OnGetItemText(CQueueItem* pItem, ColumnId column) const
 			{
 			case colLocalName:
 				if (pFolderItem->Download())
-					return pFolderItem->GetIndent() + pFolderItem->GetLocalPath().GetPath() + pFolderItem->GetLocalFile();
+					return _T("  ") + pFolderItem->GetLocalPath().GetPath() + pFolderItem->GetLocalFile();
 				break;
 			case colDirection:
 				if (pFolderItem->Download())
@@ -987,7 +981,7 @@ wxString CQueueViewBase::OnGetItemText(CQueueItem* pItem, ColumnId column) const
 				break;
 			case colTransferStatus:
 			case colErrorReason:
-				return pFolderItem->m_statusMessage;
+				return pFolderItem->GetStatusMessage();
 			case colTime:
 				return CTimeFormat::FormatDateTime(pItem->GetTime());
 			default:

@@ -484,8 +484,7 @@ void CStatusBar::UpdateSizeFormat()
 
 void CStatusBar::OnHandleLeftClick(wxWindow* pWnd)
 {
-	if (pWnd == m_pEncryptionIndicator)
-	{
+	if (pWnd == m_pEncryptionIndicator) {
 		CState* pState = CContextManager::Get()->GetCurrentContext();
 		CCertificateNotification *pCertificateNotification = 0;
 		CSftpEncryptionNotification *pSftpEncryptionNotification = 0;
@@ -500,40 +499,21 @@ void CStatusBar::OnHandleLeftClick(wxWindow* pWnd)
 		else
 			wxMessageBoxEx(_("Certificate and session data are not available yet."), _("Security information"));
 	}
-	else if (pWnd == m_pSpeedLimitsIndicator)
-	{
+	else if (pWnd == m_pSpeedLimitsIndicator) {
 		CSpeedLimitsDialog dlg;
 		dlg.Run(m_pParent);
+	}
+	else if (pWnd == m_pDataTypeIndicator) {
+		ShowDataTypeMenu();
 	}
 }
 
 void CStatusBar::OnHandleRightClick(wxWindow* pWnd)
 {
-	if (pWnd == m_pDataTypeIndicator)
-	{
-		wxMenu* pMenu = wxXmlResource::Get()->LoadMenu(_T("ID_MENU_TRANSFER_TYPE_CONTEXT"));
-		if (!pMenu)
-			return;
-
-		const int type = COptions::Get()->GetOptionVal(OPTION_ASCIIBINARY);
-		switch (type)
-		{
-		case 1:
-			pMenu->Check(XRCID("ID_MENU_TRANSFER_TYPE_ASCII"), true);
-			break;
-		case 2:
-			pMenu->Check(XRCID("ID_MENU_TRANSFER_TYPE_BINARY"), true);
-			break;
-		default:
-			pMenu->Check(XRCID("ID_MENU_TRANSFER_TYPE_AUTO"), true);
-			break;
-		}
-
-		PopupMenu(pMenu);
-		delete pMenu;
+	if (pWnd == m_pDataTypeIndicator) {
+		ShowDataTypeMenu();
 	}
-	else if (pWnd == m_pSpeedLimitsIndicator)
-	{
+	else if (pWnd == m_pSpeedLimitsIndicator) {
 		wxMenu* pMenu = wxXmlResource::Get()->LoadMenu(_T("ID_MENU_SPEEDLIMITCONTEXT"));
 		if (!pMenu)
 			return;
@@ -550,24 +530,49 @@ void CStatusBar::OnHandleRightClick(wxWindow* pWnd)
 	}
 }
 
+void CStatusBar::ShowDataTypeMenu()
+{
+	wxMenu* pMenu = wxXmlResource::Get()->LoadMenu(_T("ID_MENU_TRANSFER_TYPE_CONTEXT"));
+	if (!pMenu)
+		return;
+
+	const int type = COptions::Get()->GetOptionVal(OPTION_ASCIIBINARY);
+	switch (type)
+	{
+	case 1:
+		pMenu->Check(XRCID("ID_MENU_TRANSFER_TYPE_ASCII"), true);
+		break;
+	case 2:
+		pMenu->Check(XRCID("ID_MENU_TRANSFER_TYPE_BINARY"), true);
+		break;
+	default:
+		pMenu->Check(XRCID("ID_MENU_TRANSFER_TYPE_AUTO"), true);
+		break;
+	}
+
+	PopupMenu(pMenu);
+	delete pMenu;
+}
+
 void CStatusBar::UpdateSpeedLimitsIcon()
 {
 	bool enable = COptions::Get()->GetOptionVal(OPTION_SPEEDLIMIT_ENABLE) != 0;
 
 	wxBitmap bmp = wxArtProvider::GetBitmap(_T("ART_SPEEDLIMITS"), wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
+	if (!bmp.Ok()) {
+		return;
+	}
 	wxString tooltip;
 
 	int downloadLimit = COptions::Get()->GetOptionVal(OPTION_SPEEDLIMIT_INBOUND);
 	int uploadLimit = COptions::Get()->GetOptionVal(OPTION_SPEEDLIMIT_OUTBOUND);
-	if (!enable || (!downloadLimit && !uploadLimit))
-	{
+	if (!enable || (!downloadLimit && !uploadLimit)) {
 		wxImage img = bmp.ConvertToImage();
 		img = img.ConvertToGreyscale();
 		bmp = wxBitmap(img);
 		tooltip = _("Speed limits are disabled, click to change.");
 	}
-	else
-	{
+	else {
 		tooltip = _("Speed limits are enabled, click to change.");
 		tooltip += _T("\n");
 		if (downloadLimit)
@@ -581,8 +586,7 @@ void CStatusBar::UpdateSpeedLimitsIcon()
 			tooltip += _("Upload limit: none");
 	}
 
-	if (!m_pSpeedLimitsIndicator)
-	{
+	if (!m_pSpeedLimitsIndicator) {
 		m_pSpeedLimitsIndicator = new CIndicator(this, bmp);
 		AddField(0, widget_speedlimit, m_pSpeedLimitsIndicator);
 	}
@@ -591,30 +595,21 @@ void CStatusBar::UpdateSpeedLimitsIcon()
 	m_pSpeedLimitsIndicator->SetToolTip(tooltip);
 }
 
-void CStatusBar::OnOptionChanged(int option)
+void CStatusBar::OnOptionsChanged(changed_options_t const& options)
 {
-	switch (option)
-	{
-	case OPTION_SPEEDLIMIT_ENABLE:
-	case OPTION_SPEEDLIMIT_INBOUND:
-	case OPTION_SPEEDLIMIT_OUTBOUND:
+	if (options.test(OPTION_SPEEDLIMIT_ENABLE) || options.test(OPTION_SPEEDLIMIT_INBOUND) || options.test(OPTION_SPEEDLIMIT_OUTBOUND)) {
 		UpdateSpeedLimitsIcon();
-		break;
-	case OPTION_SIZE_FORMAT:
-	case OPTION_SIZE_USETHOUSANDSEP:
-	case OPTION_SIZE_DECIMALPLACES:
+	}
+	if (options.test(OPTION_SIZE_FORMAT) || options.test(OPTION_SIZE_USETHOUSANDSEP) || options.test(OPTION_SIZE_DECIMALPLACES)) {
 		UpdateSizeFormat();
-		break;
-	case OPTION_ASCIIBINARY:
+	}
+	if (options.test(OPTION_ASCIIBINARY)) {
 		DisplayDataType();
-		break;
-	case OPTION_THEME:
+	}
+	if (options.test(OPTION_THEME)) {
 		DisplayDataType();
 		UpdateSpeedLimitsIcon();
 		DisplayEncrypted();
-		break;
-	default:
-		break;
 	}
 }
 

@@ -7,6 +7,7 @@
 #include <option_change_event_handler.h>
 #include "sizeformatting.h"
 
+#include <algorithm>
 #include <string>
 
 #ifdef __WXMSW__
@@ -49,6 +50,10 @@ struct t_Option
 //case sensitive
 #define DEFAULT_FILENAME_SORT   _T("1")
 #endif
+
+// In C++14 we should be able to use this instead:
+//   static_assert(OPTIONS_NUM <= changed_options_t().size());
+static_assert(OPTIONS_NUM <= changed_options_size, "OPTIONS_NUM too big for changed_options_t");
 
 static const t_Option options[OPTIONS_NUM] =
 {
@@ -105,7 +110,7 @@ static const t_Option options[OPTIONS_NUM] =
 	// Interface settings
 	{ "Number of Transfers", number, _T("2"), normal },
 	{ "Ascii Binary mode", number, _T("0"), normal },
-	{ "Auto Ascii files", string, _T("am|asp|bat|c|cfm|cgi|conf|cpp|css|dhtml|diz|h|hpp|htm|html|in|inc|java|js|jsp|lua|m4|mak|md5|nfo|nsi|pas|patch|php|phtml|pl|po|py|qmail|sh|shtml|sql|svg|tcl|tpl|txt|vbs|xhtml|xml|xrc"), normal },
+	{ "Auto Ascii files", string, _T("am|asp|bat|c|cfm|cgi|conf|cpp|css|dhtml|diz|h|hpp|htm|html|in|inc|java|js|jsp|lua|m4|mak|md5|nfo|nsi|pas|patch|php|phtml|pl|po|py|qmail|sh|sha1|sha256|sha512|shtml|sql|svg|tcl|tpl|txt|vbs|xhtml|xml|xrc"), normal },
 	{ "Auto Ascii no extension", number, _T("1"), normal },
 	{ "Auto Ascii dotfiles", number, _T("1"), normal },
 	{ "Theme", string, _T("opencrystal/"), normal },
@@ -243,10 +248,10 @@ COptions::COptions()
 	LoadOptions(nameOptionMap);
 }
 
-std::map<std::string, int> COptions::GetNameOptionMap() const
+std::map<std::string, unsigned int> COptions::GetNameOptionMap() const
 {
-	std::map<std::string, int> ret;
-	for (int i = 0; i < OPTIONS_NUM; ++i) {
+	std::map<std::string, unsigned int> ret;
+	for (unsigned int i = 0; i < OPTIONS_NUM; ++i) {
 		if (options[i].flags != internal)
 			ret.insert(std::make_pair(std::string(options[i].name), i));
 	}
@@ -266,7 +271,7 @@ int COptions::GetOptionVal(unsigned int nID)
 	if (nID >= OPTIONS_NUM)
 		return 0;
 
-	wxCriticalSectionLocker l(m_sync_);
+	scoped_lock l(m_sync_);
 	return m_optionsCache[nID].numValue;
 }
 
@@ -275,7 +280,7 @@ wxString COptions::GetOption(unsigned int nID)
 	if (nID >= OPTIONS_NUM)
 		return wxString();
 
-	wxCriticalSectionLocker l(m_sync_);
+	scoped_lock l(m_sync_);
 	return m_optionsCache[nID].strValue;
 }
 
@@ -314,7 +319,7 @@ void COptions::ContinueSetOption(unsigned int nID, T const& value)
 	T validated = Validate(nID, value);
 
 	{
-		wxCriticalSectionLocker l(m_sync_);
+		scoped_lock l(m_sync_);
 		if (m_optionsCache[nID] == validated) {
 			// Nothing to do
 			return;
@@ -333,7 +338,18 @@ void COptions::ContinueSetOption(unsigned int nID, T const& value)
 			m_save_timer.Start(15000, true);
 	}
 
-	COptionChangeEventHandler::DoNotify(nID);
+	if (changedOptions_.none()) {
+		CallAfter(&COptions::NotifyChangedOptions);
+	}
+	changedOptions_.set(nID);
+}
+
+void COptions::NotifyChangedOptions()
+{
+	// Reset prior to notifying to correctly handle the case of an option being set while notifying
+	auto changedOptions = changedOptions_;
+	changedOptions_.reset();
+	COptionChangeEventHandler::DoNotify(changedOptions);
 }
 
 bool COptions::OptionFromFzDefaultsXml(unsigned int nID)
@@ -341,7 +357,7 @@ bool COptions::OptionFromFzDefaultsXml(unsigned int nID)
 	if (nID >= OPTIONS_NUM)
 		return false;
 
-	wxCriticalSectionLocker l(m_sync_);
+	scoped_lock l(m_sync_);
 	return m_optionsCache[nID].from_default;
 }
 
@@ -627,7 +643,7 @@ void COptions::Import(TiXmlElement* pElement)
 		m_save_timer.Start(15000, true);
 }
 
-void COptions::LoadOptions(std::map<std::string, int> const& nameOptionMap, TiXmlElement* settings)
+void COptions::LoadOptions(std::map<std::string, unsigned int> const& nameOptionMap, TiXmlElement* settings)
 {
 	if (!settings) {
 		settings = CreateSettingsXmlElement();
@@ -645,7 +661,7 @@ void COptions::LoadOptions(std::map<std::string, int> const& nameOptionMap, TiXm
 	}
 }
 
-void COptions::LoadOptionFromElement(TiXmlElement* pOption, std::map<std::string, int> const& nameOptionMap, bool allowDefault)
+void COptions::LoadOptionFromElement(TiXmlElement* pOption, std::map<std::string, unsigned int> const& nameOptionMap, bool allowDefault)
 {
 	const char* name = pOption->Attribute("name");
 	if (!name)
@@ -667,11 +683,11 @@ void COptions::LoadOptionFromElement(TiXmlElement* pOption, std::map<std::string
 
 		if (options[iter->second].flags == default_priority) {
 			if (allowDefault) {
-				wxCriticalSectionLocker l(m_sync_);
+				scoped_lock l(m_sync_);
 				m_optionsCache[iter->second].from_default = true;
 			}
 			else {
-				wxCriticalSectionLocker l(m_sync_);
+				scoped_lock l(m_sync_);
 				if (m_optionsCache[iter->second].from_default)
 					return;
 			}
@@ -681,18 +697,18 @@ void COptions::LoadOptionFromElement(TiXmlElement* pOption, std::map<std::string
 			long numValue = 0;
 			value.ToLong(&numValue);
 			numValue = Validate(iter->second, numValue);
-			wxCriticalSectionLocker l(m_sync_);
+			scoped_lock l(m_sync_);
 			m_optionsCache[iter->second] = numValue;
 		}
 		else {
 			value = Validate(iter->second, value);
-			wxCriticalSectionLocker l(m_sync_);
+			scoped_lock l(m_sync_);
 			m_optionsCache[iter->second] = value;
 		}
 	}
 }
 
-void COptions::LoadGlobalDefaultOptions(std::map<std::string, int> const& nameOptionMap)
+void COptions::LoadGlobalDefaultOptions(std::map<std::string, unsigned int> const& nameOptionMap)
 {
 	CLocalPath const defaultsDir = wxGetApp().GetDefaultsDir();
 	if (defaultsDir.empty())
@@ -852,7 +868,7 @@ CLocalPath COptions::InitSettingsDir()
 
 void COptions::SetDefaultValues()
 {
-	wxCriticalSectionLocker l(m_sync_);
+	scoped_lock l(m_sync_);
 	for (int i = 0; i < OPTIONS_NUM; ++i) {
 		m_optionsCache[i] = options[i].defaultValue;
 		m_optionsCache[i].from_default = false;

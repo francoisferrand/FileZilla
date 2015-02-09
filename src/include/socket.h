@@ -3,6 +3,8 @@
 
 #include "event_handler.h"
 
+#include <errno.h>
+
 // IPv6 capable, non-blocking socket class for use with wxWidgets.
 // Error codes are the same as used by the POSIX socket functions,
 // see 'man 2 socket', 'man 2 connect', ...
@@ -37,11 +39,11 @@ public:
 	int GetError() const { return m_error; }
 
 protected:
-	CSocketEventSource* m_pSource;
-	const EventType m_type;
-	wxChar *m_data;
-	int m_error;
 	CSocketEventHandler* m_pSocketEventHandler;
+	CSocketEventSource* m_pSource;
+	wxChar *m_data;
+	const EventType m_type;
+	int m_error;
 
 	friend class CSocketEventDispatcher;
 };
@@ -62,7 +64,7 @@ private:
 
 	std::deque<CSocketEvent*> m_pending_events;
 
-	wxCriticalSection m_sync;
+	mutex m_sync;
 };
 
 class CSocketEventHandler
@@ -176,6 +178,7 @@ public:
 	static bool Cleanup(bool force);
 
 	static wxString AddressToString(const struct sockaddr* addr, int addr_len, bool with_port = true, bool strip_zone_index = false);
+	static wxString AddressToString(char const* buf, int buf_len);
 
 	int Listen(address_family family, int port = 0);
 	CSocket* Accept(int& error);
@@ -191,7 +194,7 @@ public:
 
 	// If called on listen socket, sizes will be inherited by
 	// accepted sockets
-	void SetBufferSizes(int size_read, int size_write);
+	int SetBufferSizes(int size_read, int size_write);
 
 	void SetSynchronousReadCallback(CCallback* cb);
 

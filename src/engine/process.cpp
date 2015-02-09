@@ -123,6 +123,7 @@ public:
 		process_ = pi.hProcess;
 
 		// We don't need to use these
+		ResetHandle(pi.hThread);
 		ResetHandle(in_.read_);
 		ResetHandle(out_.write_);
 		ResetHandle(err_.write_);
@@ -186,6 +187,7 @@ private:
 
 #else
 
+#include <errno.h>
 #include <signal.h>
 #include <sys/wait.h>
 

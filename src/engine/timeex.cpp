@@ -9,16 +9,9 @@ CDateTime::CDateTime()
 }
 
 CDateTime::CDateTime( CDateTime const& op )
-: a_(op.a_)
-, t_(op.t_)
+: t_(op.t_)
+, a_(op.a_)
 {
-}
-
-CDateTime& CDateTime::operator=( CDateTime const& op )
-{
-	a_ = op.a_;
-	t_ = op.t_;
-	return *this;
 }
 
 CDateTime::CDateTime( int year, int month, int day, int hour, int minute, int second, int millisecond )
@@ -30,9 +23,17 @@ CDateTime::CDateTime( int year, int month, int day, int hour, int minute, int se
 }
 
 CDateTime::CDateTime( wxDateTime const& t, Accuracy a )
-: a_(a), t_(t)
+: t_(t)
+, a_(a)
 {
 	TIME_ASSERT(IsClamped());
+}
+
+CDateTime& CDateTime::operator=( CDateTime const& op )
+{
+	a_ = op.a_;
+	t_ = op.t_;
+	return *this;
 }
 
 CDateTime CDateTime::Now()

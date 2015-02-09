@@ -223,11 +223,10 @@ void CBookmarksDialog::LoadSiteSpecificBookmarks()
 		path.Replace(_T("/"), _T("\\/"));
 		path = m_site_path + _T("/") + path;
 
-		CSiteManagerItemData_Site* data = CSiteManager::GetSiteByPath(path);
+		std::unique_ptr<CSiteManagerItemData_Site> data = CSiteManager::GetSiteByPath(path);
 		if (data) {
 			CBookmarkItemData* new_data = new CBookmarkItemData(data->m_localDir, data->m_remoteDir, data->m_sync);
 			m_pTree->AppendItem(m_bookmarks_site, *iter, 1, 1, new_data);
-			delete data;
 		}
 	}
 
@@ -345,7 +344,7 @@ void CBookmarksDialog::SaveSiteSpecificBookmarks()
 	}
 }
 
-void CBookmarksDialog::OnOK(wxCommandEvent& event)
+void CBookmarksDialog::OnOK(wxCommandEvent&)
 {
 	if (!Verify())
 		return;
@@ -357,7 +356,7 @@ void CBookmarksDialog::OnOK(wxCommandEvent& event)
 	EndModal(wxID_OK);
 }
 
-void CBookmarksDialog::OnBrowse(wxCommandEvent& event)
+void CBookmarksDialog::OnBrowse(wxCommandEvent&)
 {
 	wxTreeItemId item = m_pTree->GetSelection();
 	if (!item)
@@ -387,7 +386,7 @@ void CBookmarksDialog::OnSelChanging(wxTreeEvent& event)
 	UpdateBookmark();
 }
 
-void CBookmarksDialog::OnSelChanged(wxTreeEvent& event)
+void CBookmarksDialog::OnSelChanged(wxTreeEvent&)
 {
 	DisplayBookmark();
 }
@@ -517,7 +516,7 @@ void CBookmarksDialog::DisplayBookmark()
 	XRCCTRL(*this, "ID_BOOKMARK_SYNC", wxCheckBox)->SetValue(data->m_sync);
 }
 
-void CBookmarksDialog::OnNewBookmark(wxCommandEvent& event)
+void CBookmarksDialog::OnNewBookmark(wxCommandEvent&)
 {
 	if (!Verify())
 		return;
@@ -580,7 +579,7 @@ void CBookmarksDialog::OnNewBookmark(wxCommandEvent& event)
 	m_pTree->EditLabel(child);
 }
 
-void CBookmarksDialog::OnRename(wxCommandEvent& event)
+void CBookmarksDialog::OnRename(wxCommandEvent&)
 {
 	wxTreeItemId item = m_pTree->GetSelection();
 	if (!item || item == m_bookmarks_global || item == m_bookmarks_site)
@@ -589,7 +588,7 @@ void CBookmarksDialog::OnRename(wxCommandEvent& event)
 	m_pTree->EditLabel(item);
 }
 
-void CBookmarksDialog::OnDelete(wxCommandEvent& event)
+void CBookmarksDialog::OnDelete(wxCommandEvent&)
 {
 	wxTreeItemId item = m_pTree->GetSelection();
 	if (!item || item == m_bookmarks_global || item == m_bookmarks_site)
@@ -601,7 +600,7 @@ void CBookmarksDialog::OnDelete(wxCommandEvent& event)
 	m_pTree->SelectItem(parent);
 }
 
-void CBookmarksDialog::OnCopy(wxCommandEvent& event)
+void CBookmarksDialog::OnCopy(wxCommandEvent&)
 {
 	wxTreeItemId item = m_pTree->GetSelection();
 	if (!item.IsOk())

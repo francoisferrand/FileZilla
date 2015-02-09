@@ -22,6 +22,8 @@ CFileExistsDlg::CFileExistsDlg(CFileExistsNotification *pNotification)
 
 bool CFileExistsDlg::Create(wxWindow* parent)
 {
+	wxASSERT(parent);
+
 	SetExtraStyle(wxWS_EX_BLOCK_EVENTS);
 	SetParent(parent);
 	if (!CreateControls()) {
@@ -206,11 +208,16 @@ bool CFileExistsDlg::Always(bool &directionOnly, bool &queueOnly) const
 
 wxString CFileExistsDlg::GetPathEllipsis(wxString path, wxWindow *window)
 {
+	int dn = wxDisplay::GetFromWindow(GetParent()); // Use parent window as the dialog isn't realized yet.
+	if (dn < 0) {
+		return path;
+	}
+
 	int string_width; // width of the path string in pixels
 	int y;			// dummy variable
 	window->GetTextExtent(path, &string_width, &y);
 
-	wxDisplay display(wxDisplay::GetFromWindow(window));
+	wxDisplay display(dn);
 	wxRect rect = display.GetClientArea();
 	const int DESKTOP_WIDTH = rect.GetWidth(); // width of the desktop in pixels
 	const int maxWidth = (int)(DESKTOP_WIDTH * 0.75);

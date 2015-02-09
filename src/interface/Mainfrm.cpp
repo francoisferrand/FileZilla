@@ -49,7 +49,6 @@
 #include "speedlimits_dialog.h"
 #include "toolbar.h"
 #include "menu_bar.h"
-#include "string_coalescer.h"
 
 #ifdef __WXMSW__
 #include <wx/module.h>
@@ -645,12 +644,6 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 	else if (event.GetId() == XRCID("ID_CLEARCACHE_LAYOUT")) {
 		CWrapEngine::ClearCache();
 	}
-	else if (event.GetId() == XRCID("ID_COALESCER_CLEAR")) {
-		ClearStringCoalescer();
-	}
-	else if (event.GetId() == XRCID("ID_COALESCER_BENCHMARK")) {
-		BenchmarkStringCoalescer();
-	}
 	else if (event.GetId() == XRCID("ID_MENU_TRANSFER_FILEEXISTS")) {
 		CDefaultFileExistsDlg dlg;
 		if (!dlg.Load(this, false))
@@ -810,11 +803,10 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 			return;
 		if (!pServer && !controls->site_bookmarks->path.empty()) {
 			// Get server from site manager
-			CSiteManagerItemData_Site* data = CSiteManager::GetSiteByPath(controls->site_bookmarks->path);
+			std::unique_ptr<CSiteManagerItemData_Site> data = CSiteManager::GetSiteByPath(controls->site_bookmarks->path);
 			if (data) {
 				server = data->m_server;
 				pServer = &server;
-				delete data;
 			}
 			else {
 				controls->site_bookmarks->path.clear();
@@ -893,16 +885,14 @@ void CMainFrame::OnMenuHandler(wxCommandEvent &event)
 			return;
 		}
 
-		CSiteManagerItemData_Site* pData = CSiteManager::GetSiteById(event.GetId());
+		std::unique_ptr<CSiteManagerItemData_Site> pData = CSiteManager::GetSiteById(event.GetId());
 
 		if (!pData) {
 			event.Skip();
-			return;
 		}
-
-		ConnectToSite(pData);
-
-		delete pData;
+		else {
+			ConnectToSite(*pData);
+		}
 	}
 }
 
@@ -1350,9 +1340,9 @@ void CMainFrame::OnTimer(wxTimerEvent& event)
 
 		// When we get idle event, a dialog's event loop has been left.
 		// Now we can close the top level window on the stack.
-		wxCloseEvent evt(m_closeEvent);
-		evt.SetCanVeto(false);
-		AddPendingEvent(evt);
+		wxCloseEvent *evt = new wxCloseEvent(m_closeEvent);
+		evt->SetCanVeto(false);
+		QueueEvent(evt);
 	}
 #if FZ_MANUALUPDATECHECK
 	else if( event.GetId() == update_dialog_timer_.GetId() ) {
@@ -1432,7 +1422,7 @@ void CMainFrame::OpenSiteManager(const CServer* pServer /*=0*/)
 		if (!dlg.GetServer(data))
 			return;
 
-		ConnectToSite(&data);
+		ConnectToSite(data);
 	}
 
 	if (m_pMenuBar)
@@ -1579,10 +1569,12 @@ void CMainFrame::OnToggleDirectoryTreeView(wxCommandEvent& event)
 		return;
 
 	CContextControl::_context_controls* controls = m_pContextControl->GetCurrentControls();
+	if (!controls)
+		return;
 
 	bool const local = event.GetId() == XRCID("ID_TOOLBAR_LOCALTREEVIEW") || event.GetId() == XRCID("ID_VIEW_LOCALTREE");
 	CSplitterWindowEx* splitter = local ? controls->pLocalSplitter : controls->pRemoteSplitter;
-	bool show = !controls || !splitter->IsSplit();
+	bool show = !splitter->IsSplit();
 	ShowDirectoryTree(local, show);
 }
 
@@ -1962,43 +1954,40 @@ void CMainFrame::OnSitemanagerDropdown(wxCommandEvent& event)
 	if (!m_pToolBar)
 		return;
 
-	wxMenu *pMenu = CSiteManager::GetSitesMenu();
-	if (!pMenu)
-		return;
-
-	ShowDropdownMenu(pMenu, m_pToolBar, event);
+	std::unique_ptr<wxMenu> pMenu = CSiteManager::GetSitesMenu();
+	if (pMenu) {
+		ShowDropdownMenu(pMenu.release(), m_pToolBar, event);
+	}
 }
 
-bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site* const pData, bool newTab)
+bool CMainFrame::ConnectToSite(CSiteManagerItemData_Site & data, bool newTab)
 {
-	wxASSERT(pData);
-
-	if (pData->m_server.GetLogonType() == ASK ||
-		(pData->m_server.GetLogonType() == INTERACTIVE && pData->m_server.GetUser().empty()))
+	if (data.m_server.GetLogonType() == ASK ||
+		(data.m_server.GetLogonType() == INTERACTIVE && data.m_server.GetUser().empty()))
 	{
-		if (!CLoginManager::Get().GetPassword(pData->m_server, false, pData->m_server.GetName()))
+		if (!CLoginManager::Get().GetPassword(data.m_server, false, data.m_server.GetName()))
 			return false;
 	}
 
 	if (newTab)
 		m_pContextControl->CreateTab();
 
-	if (!ConnectToServer(pData->m_server, pData->m_remoteDir))
+	if (!ConnectToServer(data.m_server, data.m_remoteDir))
 		return false;
 
-	if (!pData->m_localDir.empty()) {
+	if (!data.m_localDir.empty()) {
 		CState *pState = CContextManager::Get()->GetCurrentContext();
 		if( pState ) {
-			bool set = pState->SetLocalDir(pData->m_localDir, 0, false);
+			bool set = pState->SetLocalDir(data.m_localDir, 0, false);
 
-			if (set && pData->m_sync) {
-				wxASSERT(!pData->m_remoteDir.empty());
-				pState->SetSyncBrowse(true, pData->m_remoteDir);
+			if (set && data.m_sync) {
+				wxASSERT(!data.m_remoteDir.empty());
+				pState->SetSyncBrowse(true, data.m_remoteDir);
 			}
 		}
 	}
 
-	SetBookmarksFromPath(pData->m_path);
+	SetBookmarksFromPath(data.m_path);
 	if (m_pMenuBar)
 		m_pMenuBar->UpdateBookmarkMenu();
 
@@ -2150,11 +2139,9 @@ bool CMainFrame::RestoreSplitterPositions()
 		return false;
 
 	long * aPosValues = new long[count];
-	for (int i = 0; i < count; i++)
-	{
+	for (int i = 0; i < count; ++i) {
 		wxString token = tokens.GetNextToken();
-		if (!token.ToLong(aPosValues + i))
-		{
+		if (!token.ToLong(aPosValues + i)) {
 			delete [] aPosValues;
 			return false;
 		}
@@ -2164,9 +2151,11 @@ bool CMainFrame::RestoreSplitterPositions()
 
 	m_pBottomSplitter->SetSashPosition(aPosValues[1]);
 
-	CContextControl::_context_controls* controls = m_pContextControl->GetCurrentControls();
-	if (!controls)
+	CContextControl::_context_controls* controls = m_pContextControl ? m_pContextControl->GetCurrentControls() : 0;
+	if (!controls) {
+		delete [] aPosValues;
 		return false;
+	}
 
 	double pos = (double)aPosValues[2] / 1000000000;
 	if (pos >= 0 && pos <= 1)
@@ -2195,9 +2184,8 @@ void CMainFrame::SetDefaultSplitterPositions()
 
 	m_pQueueLogSplitter->SetSashPosition(0);
 
-	CContextControl::_context_controls* controls = m_pContextControl->GetCurrentControls();
-	if (controls)
-	{
+	CContextControl::_context_controls* controls = m_pContextControl ? m_pContextControl->GetCurrentControls() : 0;
+	if (controls) {
 		controls->pViewSplitter->SetSashPosition(0);
 		controls->pLocalSplitter->SetRelativeSashPosition(0.4);
 		controls->pRemoteSplitter->SetRelativeSashPosition(0.4);
@@ -2384,20 +2372,16 @@ void CMainFrame::ProcessCommandLine()
 			OpenSiteManager();
 		}
 	}
-	else if ((site = pCommandLine->GetOption(CCommandLine::site)) != _T(""))
-	{
-		CSiteManagerItemData_Site* pData = CSiteManager::GetSiteByPath(site);
+	else if ((site = pCommandLine->GetOption(CCommandLine::site)) != _T("")) {
+		std::unique_ptr<CSiteManagerItemData_Site> pData = CSiteManager::GetSiteByPath(site);
 
-		if (pData)
-		{
-			ConnectToSite(pData);
-			delete pData;
+		if (pData) {
+			ConnectToSite(*pData);
 		}
 	}
 
 	wxString param = pCommandLine->GetParameter();
-	if (!param.empty())
-	{
+	if (!param.empty()) {
 		wxString error;
 
 		CServer server;
@@ -2558,8 +2542,7 @@ void CMainFrame::OnTaskBarClick(wxTaskBarIconEvent&)
 		m_pAsyncRequestQueue->TriggerProcessing();
 
 #ifdef __WXGTK__
-	wxCommandEvent evt(fzEVT_TASKBAR_CLICK_DELAYED);
-	AddPendingEvent(evt);
+	QueueEvent(new wxCommandEvent(fzEVT_TASKBAR_CLICK_DELAYED));
 #endif
 }
 
@@ -2629,10 +2612,11 @@ void CMainFrame::SetBookmarksFromPath(const wxString& path)
 
 	std::shared_ptr<CContextControl::_context_controls::_site_bookmarks> site_bookmarks;
 	for (int i = 0; i < m_pContextControl->GetTabCount(); i++) {
-		CContextControl::_context_controls *controls = m_pContextControl->GetControlsFromTabIndex(i);
 		if (i == m_pContextControl->GetCurrentTab())
 			continue;
-		if (!controls->site_bookmarks || controls->site_bookmarks->path != path)
+
+		CContextControl::_context_controls *controls = m_pContextControl->GetControlsFromTabIndex(i);
+		if (!controls || !controls->site_bookmarks || controls->site_bookmarks->path != path)
 			continue;
 
 		site_bookmarks = controls->site_bookmarks;
@@ -2644,8 +2628,7 @@ void CMainFrame::SetBookmarksFromPath(const wxString& path)
 	}
 
 	CContextControl::_context_controls *controls = m_pContextControl->GetCurrentControls();
-	if (controls)
-	{
+	if (controls) {
 		controls->site_bookmarks = site_bookmarks;
 		CSiteManager::GetBookmarks(controls->site_bookmarks->path, controls->site_bookmarks->bookmarks);
 	}

@@ -97,8 +97,7 @@ void wxListCtrlEx::OnPreEmitPostScrollEvent()
 
 void wxListCtrlEx::EmitPostScrollEvent()
 {
-	wxCommandEvent evt(fzEVT_POSTSCROLL, wxID_ANY);
-	AddPendingEvent(evt);
+	QueueEvent(new wxCommandEvent(fzEVT_POSTSCROLL, wxID_ANY));
 }
 
 void wxListCtrlEx::OnScrollEvent(wxScrollWinEvent& event)
@@ -912,9 +911,9 @@ void wxListCtrlEx::InitHeaderSortImageList()
 	wxBitmap bmp;
 
 	bmp = wxArtProvider::GetBitmap(_T("ART_SORT_UP_") + lightness, wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
-	m_header_icon_index.up = m_pImageList->Add(bmp);
+	m_header_icon_index.up = GetSystemImageList()->Add(bmp);
 	bmp = wxArtProvider::GetBitmap(_T("ART_SORT_DOWN_") + lightness, wxART_OTHER, CThemeProvider::GetIconSize(iconSizeSmall));
-	m_header_icon_index.down = m_pImageList->Add(bmp);
+	m_header_icon_index.down = GetSystemImageList()->Add(bmp);
 #endif
 }
 

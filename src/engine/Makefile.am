@@ -27,6 +27,7 @@ libengine_a_SOURCES = \
 		logging.cpp \
 		misc.cpp \
 		msgbox.cpp \
+		mutex.cpp \
 		notification.cpp \
 		option_change_event_handler.cpp \
 		pathcache.cpp \
@@ -39,7 +40,6 @@ libengine_a_SOURCES = \
 		sftpcontrolsocket.cpp \
 		sizeformatting_base.cpp \
 		socket.cpp \
-		string_coalescer.cpp \
 		tlssocket.cpp \
 		timeex.cpp \
 		transfersocket.cpp

@@ -69,10 +69,10 @@ protected:
 	gnutls_certificate_credentials_t m_certCredentials{};
 
 	void LogError(int code, const wxString& function, MessageType logLegel = MessageType::Error);
-	void PrintAlert();
+	void PrintAlert(MessageType logLevel);
 
 	// Failure logs the error, uninits the session and sends a close event
-	void Failure(int code, int socket_error, const wxString& function = wxString());
+	void Failure(int code, bool send_close, const wxString& function = wxString());
 
 	static ssize_t PushFunction(gnutls_transport_ptr_t ptr, const void* data, size_t len);
 	static ssize_t PullFunction(gnutls_transport_ptr_t ptr, void* data, size_t len);
@@ -88,6 +88,7 @@ protected:
 	void OnSend();
 
 	bool ExtractCert(gnutls_datum_t const* datum, CCertificate& out);
+	std::vector<wxString> GetCertSubjectAltNames(gnutls_x509_crt_t cert);
 
 	bool m_canReadFromSocket{true};
 	bool m_canWriteToSocket{true};
@@ -121,6 +122,7 @@ protected:
 	gnutls_datum_t m_implicitTrustedCert;
 
 	bool m_socket_eof{};
+	int m_socket_error{ECONNABORTED}; // Set in the push and pull functions if reading/writing fails fatally
 };
 
 #endif //__TLSSOCKET_H__

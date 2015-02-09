@@ -250,6 +250,8 @@ CLocalTreeView::CLocalTreeView(wxWindow* parent, wxWindowID id, CState *pState, 
 	SetImageList(GetSystemImageList());
 
 	UpdateSortMode();
+	RegisterOption(OPTION_FILELIST_NAMESORT);
+
 #ifdef __WXMSW__
 	m_pVolumeEnumeratorThread = 0;
 
@@ -692,8 +694,6 @@ void CLocalTreeView::RefreshListing()
 
 	std::list<t_dir> dirsToCheck;
 
-	UpdateSortMode();
-
 #ifdef __WXMSW__
 	int prevErrorMode = SetErrorMode(SEM_FAILCRITICALERRORS);
 
@@ -880,25 +880,6 @@ void CLocalTreeView::OnSelectionChanged(wxTreeEvent& event)
 		m_setSelection = true;
 		SelectItem(event.GetOldItem());
 		m_setSelection = false;
-	}
-}
-
-int CLocalTreeView::OnCompareItems(const wxTreeItemId& item1, const wxTreeItemId& item2)
-{
-	wxString label1 = GetItemText(item1);
-	wxString label2 = GetItemText(item2);
-
-	switch (m_nameSortMode)
-	{
-	case CFileListCtrlSortBase::namesort_casesensitive:
-		return CFileListCtrlSortBase::CmpCase(label1, label2);
-
-	default:
-	case CFileListCtrlSortBase::namesort_caseinsensitive:
-		return CFileListCtrlSortBase::CmpNoCase(label1, label2);
-
-	case CFileListCtrlSortBase::namesort_natural:
-		return CFileListCtrlSortBase::CmpNatural(label1, label2);
 	}
 }
 
@@ -1595,4 +1576,12 @@ void CLocalTreeView::OnMenuOpen(wxCommandEvent&)
 		return;
 
 	OpenInFileManager(path);
+}
+
+void CLocalTreeView::OnOptionsChanged(changed_options_t const& options)
+{
+	if (options.test(OPTION_FILELIST_NAMESORT)) {
+		UpdateSortMode();
+		RefreshListing();
+	}
 }

@@ -51,10 +51,6 @@ CToolBar* CToolBar::Load(CMainFrame* pMainFrame)
 	toolbar->RegisterOption(OPTION_SHOW_TREE_REMOTE);
 	toolbar->RegisterOption(OPTION_MESSAGELOG_POSITION);
 
-#if defined(EVT_TOOL_DROPDOWN) && defined(__WXMSW__)
-	toolbar->MakeDropdownTool(XRCID("ID_TOOLBAR_SITEMANAGER"));
-#endif
-
 #ifdef __WXMSW__
 	int majorVersion, minorVersion;
 	wxGetOsVersion(& majorVersion, & minorVersion);
@@ -136,72 +132,43 @@ void CToolBar::UpdateToolbarState()
 	bool canReconnect;
 	if (pServer || !idle)
 		canReconnect = false;
-	else
-	{
+	else {
 		CServer tmp;
 		canReconnect = !pState->GetLastServer().GetHost().empty();
 	}
 	EnableTool(XRCID("ID_TOOLBAR_RECONNECT"), canReconnect);
 }
 
-void CToolBar::OnOptionChanged(int option)
+void CToolBar::OnOptionsChanged(changed_options_t const& options)
 {
-	switch (option)
-	{
-	case OPTION_SHOW_MESSAGELOG:
+	if (options.test(OPTION_SHOW_MESSAGELOG)) {
 		ToggleTool(XRCID("ID_TOOLBAR_LOGVIEW"), COptions::Get()->GetOptionVal(OPTION_SHOW_MESSAGELOG) != 0);
-		break;
-	case OPTION_SHOW_QUEUE:
+	}
+	if (options.test(OPTION_SHOW_QUEUE)) {
 		ToggleTool(XRCID("ID_TOOLBAR_QUEUEVIEW"), COptions::Get()->GetOptionVal(OPTION_SHOW_QUEUE) != 0);
-		break;
-	case OPTION_SHOW_TREE_LOCAL:
+	}
+	if (options.test(OPTION_SHOW_TREE_LOCAL)) {
 		ToggleTool(XRCID("ID_TOOLBAR_LOCALTREEVIEW"), COptions::Get()->GetOptionVal(OPTION_SHOW_TREE_LOCAL) != 0);
-		break;
-	case OPTION_SHOW_TREE_REMOTE:
+	}
+	if (options.test(OPTION_SHOW_TREE_REMOTE)) {
 		ToggleTool(XRCID("ID_TOOLBAR_REMOTETREEVIEW"), COptions::Get()->GetOptionVal(OPTION_SHOW_TREE_REMOTE) != 0);
-		break;
-	case OPTION_MESSAGELOG_POSITION:
+	}
+	if (options.test(OPTION_MESSAGELOG_POSITION)) {
 		if (COptions::Get()->GetOptionVal(OPTION_MESSAGELOG_POSITION) == 2)
 			HideTool(XRCID("ID_TOOLBAR_LOGVIEW"));
-		else
-		{
+		else {
 			ShowTool(XRCID("ID_TOOLBAR_LOGVIEW"));
 			ToggleTool(XRCID("ID_TOOLBAR_LOGVIEW"), COptions::Get()->GetOptionVal(OPTION_SHOW_MESSAGELOG) != 0);
 		}
-		break;
-	default:
-		break;
-	}
+	}	
 }
-
-#if defined(EVT_TOOL_DROPDOWN) && defined(__WXMSW__)
-void CToolBar::MakeDropdownTool(int id)
-{
-	wxToolBarToolBase* pOldTool = FindById(id);
-	if (!pOldTool)
-		return;
-
-	wxToolBarToolBase* pTool = new wxToolBarToolBase(0, id,
-		pOldTool->GetLabel(), pOldTool->GetNormalBitmap(), pOldTool->GetDisabledBitmap(),
-		wxITEM_DROPDOWN, NULL, pOldTool->GetShortHelp(), pOldTool->GetLongHelp());
-
-	int pos = GetToolPos(id);
-	wxASSERT(pos != wxNOT_FOUND);
-
-	DeleteToolByPos(pos);
-	InsertTool(pos, pTool);
-	Realize();
-}
-#endif
 
 bool CToolBar::ShowTool(int id)
 {
 	int offset = 0;
 
-	for (auto iter = m_hidden_tools.begin(); iter != m_hidden_tools.end(); ++iter)
-	{
-		if (iter->second->GetId() != id)
-		{
+	for (auto iter = m_hidden_tools.begin(); iter != m_hidden_tools.end(); ++iter) {
+		if (iter->second->GetId() != id) {
 			offset++;
 			continue;
 		}
@@ -226,12 +193,11 @@ bool CToolBar::HideTool(int id)
 	if (!tool)
 		return false;
 
-	for (auto iter = m_hidden_tools.begin(); iter != m_hidden_tools.end(); ++iter)
-	{
-		if (iter->first > pos)
+	for (auto const& iter : m_hidden_tools) {
+		if (iter.first > pos)
 			break;
 
-		pos++;
+		++pos;
 	}
 
 	m_hidden_tools[pos] = tool;

@@ -16,6 +16,7 @@ noinst_HEADERS = \
 	logging.h \
 	misc.h \
 	msgbox.h \
+	mutex.h \
 	notification.h \
 	optional.h \
 	optionsbase.h \
@@ -26,6 +27,5 @@ noinst_HEADERS = \
 	setup.h \
 	sizeformatting_base.h \
 	socket.h \
-	string_coalescer.h \
 	timeex.h
 

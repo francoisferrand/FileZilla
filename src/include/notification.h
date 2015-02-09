@@ -28,10 +28,14 @@ class CFileZillaEngine;
 class wxFzEvent final : public wxEvent
 {
 public:
-	wxFzEvent(int id = wxID_ANY);
+	wxFzEvent();
+
+	explicit wxFzEvent(int id);
+	explicit wxFzEvent(CFileZillaEngine const* engine);
+
 	virtual wxEvent *Clone() const;
 
-	CFileZillaEngine const* engine_{};
+	CFileZillaEngine const* engine_;
 };
 
 wxDECLARE_EVENT(fzEVT_NOTIFICATION, wxFzEvent);
@@ -166,7 +170,7 @@ public:
 	bool canResume{};
 
 	// overwriteAction will be set by the request handler
-	enum OverwriteAction
+	enum OverwriteAction : signed char
 	{
 		unknown = -1,
 		ask,
@@ -222,10 +226,23 @@ protected:
 class CTransferStatus final
 {
 public:
+	CTransferStatus() {}
+	CTransferStatus(wxFileOffset total, wxFileOffset start, bool l)
+		: totalSize(total)
+		, startOffset(start)
+		, currentOffset(start)
+		, list(l)
+	{}
+
 	wxDateTime started;
 	wxFileOffset totalSize{-1};		// Total size of the file to transfer, -1 if unknown
 	wxFileOffset startOffset{-1};
 	wxFileOffset currentOffset{-1};
+
+	void clear() { startOffset = -1; }
+	bool empty() const { return startOffset < 0; }
+
+	explicit operator bool() const { return !empty(); }
 
 	// True on download notifications iff currentOffset != startOffset.
 	// True on FTP upload notifications iff currentOffset != startOffset
@@ -239,13 +256,13 @@ public:
 class CTransferStatusNotification final : public CNotificationHelper<nId_transferstatus>
 {
 public:
-	CTransferStatusNotification(CTransferStatus *pStatus);
-	virtual ~CTransferStatusNotification();
+	CTransferStatusNotification() {}
+	CTransferStatusNotification(CTransferStatus const& status);
 
-	const CTransferStatus *GetStatus() const;
+	CTransferStatus const& GetStatus() const;
 
 protected:
-	CTransferStatus *m_pStatus;
+	CTransferStatus const status_;
 };
 
 // Notification about new or changed hostkeys, only used by SSH/SFTP transfers.
@@ -293,16 +310,18 @@ class CCertificate final
 public:
 	CCertificate() = default;
 	CCertificate(
-		const unsigned char* rawData, unsigned int len,
-		wxDateTime activationTime, wxDateTime expirationTime,
-		const wxString& serial,
-		const wxString& pkalgoname, unsigned int bits,
-		const wxString& signalgoname,
-		const wxString& fingerprint_md5,
-		const wxString& fingerprint_sha1,
-		const wxString& subject,
-		const wxString& issuer);
-	CCertificate(const CCertificate& op);
+		unsigned char const* rawData, unsigned int len,
+		wxDateTime const& activationTime, wxDateTime const& expirationTime,
+		wxString const& serial,
+		wxString const& pkalgoname, unsigned int bits,
+		wxString const& signalgoname,
+		wxString const& fingerprint_sha256,
+		wxString const& fingerprint_sha1,
+		wxString const& issuer,
+		wxString const& subject,
+		std::vector<wxString> const& altSubjectNames);
+	
+	CCertificate(CCertificate const& op);
 	~CCertificate();
 
 	const unsigned char* GetRawData(unsigned int& len) const { len = m_len; return m_rawData; }
@@ -315,13 +334,15 @@ public:
 
 	const wxString& GetSignatureAlgorithm() const { return m_signalgoname; }
 
-	const wxString& GetFingerPrintMD5() const { return m_fingerprint_md5; }
+	const wxString& GetFingerPrintSHA256() const { return m_fingerprint_sha256; }
 	const wxString& GetFingerPrintSHA1() const { return m_fingerprint_sha1; }
 
 	const wxString& GetSubject() const { return m_subject; }
 	const wxString& GetIssuer() const { return m_issuer; }
 
-	CCertificate& operator=(const CCertificate &op);
+	CCertificate& operator=(CCertificate const& op);
+
+	std::vector<wxString> const& GetAltSubjectNames() const { return m_altSubjectNames; }
 
 private:
 	wxDateTime m_activationTime;
@@ -336,11 +357,13 @@ private:
 
 	wxString m_signalgoname;
 
-	wxString m_fingerprint_md5;
+	wxString m_fingerprint_sha256;
 	wxString m_fingerprint_sha1;
 
-	wxString m_subject;
 	wxString m_issuer;
+	wxString m_subject;
+
+	std::vector<wxString> m_altSubjectNames;
 };
 
 class CCertificateNotification final : public CAsyncRequestNotification

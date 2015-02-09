@@ -4,8 +4,9 @@
 #include "aui_notebook_ex.h"
 #include "listctrlex.h"
 #include "edithandler.h"
+#include "optional.h"
 
-enum class QueuePriority {
+enum class QueuePriority : char {
 	lowest,
 	low,
 	normal,
@@ -57,8 +58,6 @@ public:
 	wxDateTime GetTime() const { return m_time; }
 	void UpdateTime() { m_time = wxDateTime::UNow(); }
 
-	const wxString& GetIndent() const;
-
 	const std::vector<CQueueItem*>& GetChildren() const { return m_children; }
 	int GetRemovedAtFront() const { return m_removed_at_front; }
 
@@ -67,10 +66,8 @@ protected:
 
 	CQueueItem* m_parent;
 
-	int m_visibleOffspring; // Visible offspring over all sublevels
-	int m_indent;
-
-	int m_maxCachedIndex;
+	int m_visibleOffspring{}; // Visible offspring over all sublevels
+	int m_maxCachedIndex{-1};
 
 	struct t_cacheItem
 	{
@@ -89,7 +86,7 @@ private:
 	// Number of items removed at front of list
 	// Increased instead of calling slow m_children.erase(0),
 	// resetted on insert.
-	int m_removed_at_front;
+	int m_removed_at_front{};
 };
 
 class CFileItem;
@@ -153,10 +150,10 @@ public:
 	void SetPriorityRaw(QueuePriority priority);
 	QueuePriority GetPriority() const;
 
-	const wxString& GetLocalFile() const { return !Download() ? GetSourceFile() : (m_targetFile.empty() ? m_sourceFile : m_targetFile); }
-	const wxString& GetRemoteFile() const { return Download() ? GetSourceFile() : (m_targetFile.empty() ? m_sourceFile : m_targetFile); }
+	const wxString& GetLocalFile() const { return !Download() ? GetSourceFile() : (m_targetFile ? *m_targetFile : m_sourceFile); }
+	const wxString& GetRemoteFile() const { return Download() ? GetSourceFile() : (m_targetFile ? *m_targetFile : m_sourceFile); }
 	const wxString& GetSourceFile() const { return m_sourceFile; }
-	const wxString& GetTargetFile() const { return m_targetFile; }
+	CSparseOptional<wxString> const& GetTargetFile() const { return m_targetFile; }
 	const CLocalPath& GetLocalPath() const { return m_localPath; }
 	const CServerPath& GetRemotePath() const { return m_remotePath; }
 	const wxLongLong& GetSize() const { return m_size; }
@@ -191,18 +188,50 @@ public:
 	virtual bool TryRemoveAll(); // Removes a inactive childrens, queues active children for removal.
 								 // Returns true if item can be removed itself
 
-	void SetTargetFile(const wxString &file);
+	void SetTargetFile(wxString const& file);
 
-	int m_errorCount;
-	CEditHandler::fileType m_edit;
+	enum Status : char {
+		none,
+		incorrect_password,
+		timeout,
+		disconnecting,
+		disconnected,
+		connecting,
+		connection_failed,
+		interrupted,
+		wait_browsing,
+		wait_password,
+		local_file_unwriteable,
+		could_not_start,
+		transferring,
+		creating_dir
+	};
 
-	wxString m_statusMessage;
+	wxString const& GetStatusMessage() const;
+	void SetStatusMessage(Status status);
 
-	CFileTransferCommand::t_transferSettings m_transferSettings;
+	unsigned char m_errorCount{};
+	CEditHandler::fileType m_edit{CEditHandler::none};
+	CFileExistsNotification::OverwriteAction m_defaultFileExistsAction{CFileExistsNotification::unknown};
+	CFileExistsNotification::OverwriteAction m_onetime_action{CFileExistsNotification::unknown};
+	QueuePriority m_priority{QueuePriority::normal};
 
-	t_EngineData* m_pEngineData;
+protected:
+	enum : char
+	{
+		flag_download = 0x01,
+		flag_active = 0x02,
+		flag_made_progress = 0x04,
+		flag_queued = 0x08,
+		flag_remove = 0x10,
+		flag_ascii = 0x20
+	};
+	char flags{};
+	Status m_status{};
 
-	CFileExistsNotification::OverwriteAction m_defaultFileExistsAction;
+public:
+	t_EngineData* m_pEngineData{};
+
 
 	inline bool made_progress() const { return (flags & flag_made_progress) != 0; }
 	inline void set_made_progress(bool made_progress)
@@ -213,25 +242,23 @@ public:
 			flags &= ~flag_made_progress;
 	}
 
-	CFileExistsNotification::OverwriteAction m_onetime_action;
+	bool Ascii() const { return (flags & flag_ascii) != 0; }
+
+	void SetAscii(bool ascii)
+	{
+		if (ascii) {
+			flags |= flag_ascii;
+		}
+		else {
+			flags &= ~flag_ascii;
+		}
+	}
 
 protected:
-	enum
-	{
-		flag_download = 0x01,
-		flag_active = 0x02,
-		flag_made_progress = 0x04,
-		flag_queued = 0x08,
-		flag_remove = 0x10
-	};
-	int flags;
-
-	QueuePriority m_priority;
-
-	wxString m_sourceFile;
-	wxString m_targetFile;
-	const CLocalPath m_localPath;
-	const CServerPath m_remotePath;
+	wxString const m_sourceFile;
+	CSparseOptional<wxString> m_targetFile;
+	CLocalPath const m_localPath;
+	CServerPath const m_remotePath;
 	wxLongLong m_size;
 };
 
@@ -266,14 +293,14 @@ public:
 
 	wxString m_statusMessage;
 
-	volatile bool m_remove;
-	bool m_active;
+	volatile bool m_remove{};
+	bool m_active{};
 
-	int m_count;
+	int m_count{};
 
-	CFileExistsNotification::OverwriteAction m_defaultFileExistsAction;
+	CFileExistsNotification::OverwriteAction m_defaultFileExistsAction{CFileExistsNotification::unknown};
 
-	bool m_dir_is_empty;
+	bool m_dir_is_empty{};
 	CLocalPath m_current_local_path;
 	CServerPath m_current_remote_path;
 

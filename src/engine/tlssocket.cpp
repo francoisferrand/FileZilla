@@ -3,11 +3,9 @@
 #include "tlssocket.h"
 #include "ControlSocket.h"
 
-#include <gnutls/gnutls.h>
 #include <gnutls/x509.h>
-#include <errno.h>
 
-char const ciphers[] = "SECURE256:+SECURE128:+ARCFOUR-128:-3DES-CBC:-MD5:+SIGN-ALL:-SIGN-RSA-MD5:+CTYPE-X509:-CTYPE-OPENPGP:-VERS-SSL3.0";
+char const ciphers[] = "SECURE256:+SECURE128:-ARCFOUR-128:-3DES-CBC:-MD5:+SIGN-ALL:-SIGN-RSA-MD5:+CTYPE-X509:-CTYPE-OPENPGP:-VERS-SSL3.0";
 
 #define TLSDEBUG 0
 #if TLSDEBUG
@@ -153,39 +151,53 @@ void CTlsSocket::UninitSession()
 
 void CTlsSocket::LogError(int code, const wxString& function, MessageType logLevel)
 {
-	if (code == GNUTLS_E_WARNING_ALERT_RECEIVED || code == GNUTLS_E_FATAL_ALERT_RECEIVED)
-		PrintAlert();
-
-	const char* error = gnutls_strerror(code);
-
-	if (error)
-	{
-		wxString str(error, wxConvLocal);
-		if (function.empty())
-			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d: %s"), code, str);
-		else
-			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d in %s: %s"), code, function, str);
+	if (code == GNUTLS_E_WARNING_ALERT_RECEIVED || code == GNUTLS_E_FATAL_ALERT_RECEIVED) {
+		PrintAlert(logLevel);
 	}
-	else
-	{
-		if (function.empty())
-			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d"), code);
-		else
-			m_pOwner->LogMessage(logLevel, _T("GnuTLS error %d in %s"), code, function);
+	else if (code == GNUTLS_E_PULL_ERROR) {
+		if (function.empty()) {
+			m_pOwner->LogMessage(MessageType::Debug_Warning, _T("GnuTLS could not read from socket: %s"), CSocket::GetErrorDescription(m_socket_error));
+		}
+		else {
+			m_pOwner->LogMessage(MessageType::Debug_Warning, _T("GnuTLS could not read from socket in %s: %s"), function, CSocket::GetErrorDescription(m_socket_error));
+		}
+	}
+	else if (code == GNUTLS_E_PUSH_ERROR) {
+		if (function.empty()) {
+			m_pOwner->LogMessage(MessageType::Debug_Warning, _T("GnuTLS could not write to socket: %s"), CSocket::GetErrorDescription(m_socket_error));
+		}
+		else {
+			m_pOwner->LogMessage(MessageType::Debug_Warning, _T("GnuTLS could not write to socket in %s: %s"), function, CSocket::GetErrorDescription(m_socket_error));
+		}
+	}
+	else {
+		const char* error = gnutls_strerror(code);
+		if (error) {
+			wxString str(error, wxConvLocal);
+			if (function.empty())
+				m_pOwner->LogMessage(logLevel, _("GnuTLS error %d: %s"), code, str);
+			else
+				m_pOwner->LogMessage(logLevel, _("GnuTLS error %d in %s: %s"), code, function, str);
+		}
+		else {
+			if (function.empty())
+				m_pOwner->LogMessage(logLevel, _("GnuTLS error %d"), code);
+			else
+				m_pOwner->LogMessage(logLevel, _("GnuTLS error %d in %s"), code, function);
+		}
 	}
 }
 
-void CTlsSocket::PrintAlert()
+void CTlsSocket::PrintAlert(MessageType logLevel)
 {
 	gnutls_alert_description_t last_alert = gnutls_alert_get(m_session);
 	const char* alert = gnutls_alert_get_name(last_alert);
-	if (alert)
-	{
+	if (alert) {
 		wxString str(alert, wxConvLocal);
-		m_pOwner->LogMessage(MessageType::Debug_Warning, _T("GnuTLS alert %d: %s"), last_alert, str);
+		m_pOwner->LogMessage(logLevel, _("Received TLS alert from the server: %s (%d)"), str, last_alert);
 	}
 	else
-		m_pOwner->LogMessage(MessageType::Debug_Warning, _T("GnuTLS alert %d"), last_alert);
+		m_pOwner->LogMessage(logLevel, _("Received unknown TLS alert %d from the server"), last_alert);
 }
 
 ssize_t CTlsSocket::PushFunction(gnutls_transport_ptr_t ptr, const void* data, size_t len)
@@ -203,14 +215,12 @@ ssize_t CTlsSocket::PushFunction(const void* data, size_t len)
 #if TLSDEBUG
 	m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::PushFunction(%d)"), len);
 #endif
-	if (!m_canWriteToSocket)
-	{
+	if (!m_canWriteToSocket) {
 		gnutls_transport_set_errno(m_session, EAGAIN);
 		return -1;
 	}
 
-	if (!m_pSocketBackend)
-	{
+	if (!m_pSocketBackend) {
 		gnutls_transport_set_errno(m_session, 0);
 		return -1;
 	}
@@ -218,16 +228,15 @@ ssize_t CTlsSocket::PushFunction(const void* data, size_t len)
 	int error;
 	int written = m_pSocketBackend->Write(data, len, error);
 
-	if (written < 0)
-	{
-		if (error == EAGAIN)
-		{
-			m_canWriteToSocket = false;
-			gnutls_transport_set_errno(m_session, EAGAIN);
-			return -1;
+	if (written < 0) {
+		m_canWriteToSocket = false;
+		if (error == EAGAIN) {
+			m_socket_error = error;
 		}
-
-		gnutls_transport_set_errno(m_session, 0);
+		gnutls_transport_set_errno(m_session, error);
+#if TLSDEBUG
+		m_pOwner->LogMessage(MessageType::Debug_Debug, _T("  returning -1 due to %d"), error);
+#endif
 		return -1;
 	}
 
@@ -266,8 +275,13 @@ ssize_t CTlsSocket::PullFunction(void* data, size_t len)
 				CSocketEventSource::dispatcher_.SendEvent(evt);
 			}
 		}
-
+		else {
+			m_socket_error = error;
+		}
 		gnutls_transport_set_errno(m_session, error);
+#if TLSDEBUG
+		m_pOwner->LogMessage(MessageType::Debug_Debug, _T("  returning -1 due to %d"), error);
+#endif
 		return -1;
 	}
 
@@ -466,15 +480,13 @@ int CTlsSocket::ContinueHandshake()
 	wxASSERT(m_tlsState == TlsState::handshake);
 
 	int res = gnutls_handshake(m_session);
-	while (res == GNUTLS_E_AGAIN || res == GNUTLS_E_INTERRUPTED)
-	{
-		if ( gnutls_record_get_direction(m_session) != 1 || !m_canWriteToSocket )
+	while (res == GNUTLS_E_AGAIN || res == GNUTLS_E_INTERRUPTED) {
+		if (!(gnutls_record_get_direction(m_session) ? m_canWriteToSocket : m_canReadFromSocket)) {
 			break;
-
+		}
 		res = gnutls_handshake(m_session);
 	}
-	if (!res)
-	{
+	if (!res) {
 		m_pOwner->LogMessage(MessageType::Debug_Info, _T("TLS Handshake successful"));
 
 		if (ResumedSession())
@@ -491,11 +503,9 @@ int CTlsSocket::ContinueHandshake()
 		if (res != FZ_REPLY_OK)
 			return res;
 
-		if (m_shutdown_requested)
-		{
+		if (m_shutdown_requested) {
 			int error = Shutdown();
-			if (!error || error != EAGAIN)
-			{
+			if (!error || error != EAGAIN) {
 				CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::close);
 				CSocketEventSource::dispatcher_.SendEvent(evt);
 			}
@@ -506,7 +516,7 @@ int CTlsSocket::ContinueHandshake()
 	else if (res == GNUTLS_E_AGAIN || res == GNUTLS_E_INTERRUPTED)
 		return FZ_REPLY_WOULDBLOCK;
 
-	Failure(res, ECONNABORTED);
+	Failure(res, true);
 
 	return FZ_REPLY_ERROR;
 }
@@ -526,19 +536,16 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 		return -1;
 	}
 
-	if (m_peekDataLen)
-	{
+	if (m_peekDataLen) {
 		unsigned int min = wxMin(len, m_peekDataLen);
 		memcpy(buffer, m_peekData, min);
 
-		if (min == m_peekDataLen)
-		{
+		if (min == m_peekDataLen) {
 			m_peekDataLen = 0;
 			delete [] m_peekData;
 			m_peekData = 0;
 		}
-		else
-		{
+		else {
 			memmove(m_peekData, m_peekData + min, m_peekDataLen - min);
 			m_peekDataLen -= min;
 		}
@@ -550,12 +557,6 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 	}
 
 	int res = DoCallGnutlsRecordRecv(buffer, len);
-	while (res == GNUTLS_E_AGAIN && m_canReadFromSocket && !gnutls_record_get_direction(m_session)) {
-		// Spurious EAGAIN, try again.
-		// Can happen on early EOF.
-		m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("CTlsSocket spurious EAGAIN in gnutls_record_recv. eof state: %d"), m_socket_eof);
-		res = gnutls_record_recv(m_session, buffer, len);
-	}
 	if (res >= 0) {
 		if (res > 0)
 			TriggerEvents();
@@ -577,8 +578,8 @@ int CTlsSocket::Read(void *buffer, unsigned int len, int& error)
 		m_lastReadFailed = true;
 	}
 	else {
-		Failure(res, 0, _T("gnutls_record_recv"));
-		error = ECONNABORTED;
+		Failure(res, false, _T("gnutls_record_recv"));
+		error = m_socket_error;
 	}
 
 	return -1;
@@ -636,8 +637,8 @@ int CTlsSocket::Write(const void *buffer, unsigned int len, int& error)
 		}
 	}
 	else {
-		Failure(res, 0, _T("gnutls_record_send"));
-		error = ECONNABORTED;
+		Failure(res, false, _T("gnutls_record_send"));
+		error = m_socket_error;
 		return -1;
 	}
 }
@@ -671,7 +672,7 @@ void CTlsSocket::CheckResumeFailedReadWrite()
 			return;
 
 		if (res < 0) {
-			Failure(res, ECONNABORTED);
+			Failure(res, true);
 			return;
 		}
 
@@ -691,7 +692,7 @@ void CTlsSocket::CheckResumeFailedReadWrite()
 			delete [] m_peekData;
 			m_peekData = 0;
 			if (res != GNUTLS_E_INTERRUPTED && res != GNUTLS_E_AGAIN)
-				Failure(res, ECONNABORTED);
+				Failure(res, true);
 			return;
 		}
 
@@ -708,14 +709,12 @@ void CTlsSocket::CheckResumeFailedReadWrite()
 	}
 }
 
-void CTlsSocket::Failure(int code, int socket_error, const wxString& function)
+void CTlsSocket::Failure(int code, bool send_close, const wxString& function)
 {
-	m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::Failure(%d, %d)"), code, socket_error);
-	if (code)
-	{
+	m_pOwner->LogMessage(MessageType::Debug_Debug, _T("CTlsSocket::Failure(%d)"), code);
+	if (code) {
 		LogError(code, function);
-		if (m_socket_eof)
-		{
+		if (m_socket_eof) {
 			if (code == GNUTLS_E_UNEXPECTED_PACKET_LENGTH
 #ifdef GNUTLS_E_PREMATURE_TERMINATION
 				|| code == GNUTLS_E_PREMATURE_TERMINATION
@@ -728,17 +727,15 @@ void CTlsSocket::Failure(int code, int socket_error, const wxString& function)
 	}
 	Uninit();
 
-	if (socket_error)
-	{
-		CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::close, socket_error);
+	if (send_close) {
+		CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::close, m_socket_error);
 		CSocketEventSource::dispatcher_.SendEvent(evt);
 	}
 }
 
 int CTlsSocket::Peek(void *buffer, unsigned int len, int& error)
 {
-	if (m_peekData)
-	{
+	if (m_peekData) {
 		int min = wxMin(len, m_peekDataLen);
 		memcpy(buffer, m_peekData, min);
 
@@ -767,8 +764,7 @@ int CTlsSocket::Shutdown()
 	if (m_tlsState == TlsState::closing)
 		return EAGAIN;
 
-	if (m_tlsState == TlsState::handshake || m_tlsState == TlsState::verifycert)
-	{
+	if (m_tlsState == TlsState::handshake || m_tlsState == TlsState::verifycert) {
 		// Shutdown during handshake is not a good idea.
 		m_pOwner->LogMessage(MessageType::Debug_Verbose, _T("Shutdown during handshake, postponing"));
 		m_shutdown_requested = true;
@@ -783,8 +779,7 @@ int CTlsSocket::Shutdown()
 	int res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
 	while ((res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) && m_canWriteToSocket)
 		res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
-	if (!res)
-	{
+	if (!res) {
 		m_tlsState = TlsState::closed;
 		return 0;
 	}
@@ -792,8 +787,8 @@ int CTlsSocket::Shutdown()
 	if (res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN)
 		return EAGAIN;
 
-	Failure(res, 0);
-	return ECONNABORTED;
+	Failure(res, false);
+	return m_socket_error;
 }
 
 void CTlsSocket::ContinueShutdown()
@@ -803,8 +798,7 @@ void CTlsSocket::ContinueShutdown()
 	int res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
 	while ((res == GNUTLS_E_INTERRUPTED || res == GNUTLS_E_AGAIN) && m_canWriteToSocket)
 		res = gnutls_bye(m_session, GNUTLS_SHUT_WR);
-	if (!res)
-	{
+	if (!res) {
 		m_tlsState = TlsState::closed;
 
 		CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::close);
@@ -814,27 +808,24 @@ void CTlsSocket::ContinueShutdown()
 	}
 
 	if (res != GNUTLS_E_INTERRUPTED && res != GNUTLS_E_AGAIN)
-		Failure(res, ECONNABORTED);
+		Failure(res, true);
 }
 
 void CTlsSocket::TrustCurrentCert(bool trusted)
 {
-	if (m_tlsState != TlsState::verifycert)
-	{
+	if (m_tlsState != TlsState::verifycert) {
 		m_pOwner->LogMessage(MessageType::Debug_Warning, _T("TrustCurrentCert called at wrong time."));
 		return;
 	}
 
-	if (trusted)
-	{
+	if (trusted) {
 		m_tlsState = TlsState::conn;
 
 		if (m_lastWriteFailed)
 			m_lastWriteFailed = false;
 		CheckResumeFailedReadWrite();
 
-		if (m_tlsState == TlsState::conn)
-		{
+		if (m_tlsState == TlsState::conn) {
 			CSocketEvent *evt = new CSocketEvent(m_pEvtHandler, this, CSocketEvent::connection);
 			CSocketEventSource::dispatcher_.SendEvent(evt);
 		}
@@ -845,7 +836,7 @@ void CTlsSocket::TrustCurrentCert(bool trusted)
 	}
 
 	m_pOwner->LogMessage(MessageType::Error, _("Remote certificate not trusted."));
-	Failure(0, ECONNABORTED);
+	Failure(0, true);
 }
 
 static wxString bin2hex(const unsigned char* in, size_t size)
@@ -892,8 +883,7 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 	unsigned int pkBits;
 	int pkAlgo = gnutls_x509_crt_get_pk_algorithm(cert, &pkBits);
 	wxString pkAlgoName;
-	if (pkAlgo >= 0)
-	{
+	if (pkAlgo >= 0) {
 		const char* pAlgo = gnutls_pk_algorithm_get_name((gnutls_pk_algorithm_t)pkAlgo);
 		if (pAlgo)
 			pkAlgoName = wxString(pAlgo, wxConvUTF8);
@@ -901,8 +891,7 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 
 	int signAlgo = gnutls_x509_crt_get_signature_algorithm(cert);
 	wxString signAlgoName;
-	if (signAlgo >= 0)
-	{
+	if (signAlgo >= 0) {
 		const char* pAlgo = gnutls_sign_algorithm_get_name((gnutls_sign_algorithm_t)signAlgo);
 		if (pAlgo)
 			signAlgoName = wxString(pAlgo, wxConvUTF8);
@@ -912,8 +901,7 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 
 	size = 0;
 	res = gnutls_x509_crt_get_dn(cert, 0, &size);
-	if (size)
-	{
+	if (size) {
 		char* dn = new char[size + 1];
 		dn[size] = 0;
 		if (!(res = gnutls_x509_crt_get_dn(cert, dn, &size)))
@@ -933,14 +921,14 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 		return false;
 	}
 
+	std::vector<wxString> alt_subject_names = GetCertSubjectAltNames(cert);
+
 	size = 0;
 	res = gnutls_x509_crt_get_issuer_dn(cert, 0, &size);
-	if (size)
-	{
+	if (size) {
 		char* dn = new char[++size + 1];
 		dn[size] = 0;
-		if (!(res = gnutls_x509_crt_get_issuer_dn(cert, dn, &size)))
-		{
+		if (!(res = gnutls_x509_crt_get_issuer_dn(cert, dn, &size))) {
 			dn[size] = 0;
 			issuer = wxString(dn, wxConvUTF8);
 		}
@@ -956,19 +944,17 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 		return false;
 	}
 
-	wxString fingerprint_md5;
+	wxString fingerprint_sha256;
 	wxString fingerprint_sha1;
 
 	unsigned char digest[100];
 	size = sizeof(digest) - 1;
-	if (!gnutls_x509_crt_get_fingerprint(cert, GNUTLS_DIG_MD5, digest, &size))
-	{
+	if (!gnutls_x509_crt_get_fingerprint(cert, GNUTLS_DIG_SHA256, digest, &size)) {
 		digest[size] = 0;
-		fingerprint_md5 = bin2hex(digest, size);
+		fingerprint_sha256 = bin2hex(digest, size);
 	}
 	size = sizeof(digest) - 1;
-	if (!gnutls_x509_crt_get_fingerprint(cert, GNUTLS_DIG_SHA1, digest, &size))
-	{
+	if (!gnutls_x509_crt_get_fingerprint(cert, GNUTLS_DIG_SHA1, digest, &size)) {
 		digest[size] = 0;
 		fingerprint_sha1 = bin2hex(digest, size);
 	}
@@ -981,12 +967,46 @@ bool CTlsSocket::ExtractCert(gnutls_datum_t const* datum, CCertificate& out)
 		serial,
 		pkAlgoName, pkBits,
 		signAlgoName,
-		fingerprint_md5,
+		fingerprint_sha256,
 		fingerprint_sha1,
+		issuer,
 		subject,
-		issuer);
+		alt_subject_names);
 
 	return true;
+}
+
+
+std::vector<wxString> CTlsSocket::GetCertSubjectAltNames(gnutls_x509_crt_t cert)
+{
+	std::vector<wxString> ret;
+
+	char san[4096];
+	for (unsigned int i = 0; i < 10000; ++i) { // I assume this is a sane limit
+		size_t san_size = sizeof(san) - 1;
+		int const type_or_error = gnutls_x509_crt_get_subject_alt_name(cert, i, san, &san_size, 0);
+		if (type_or_error == GNUTLS_E_SHORT_MEMORY_BUFFER) {
+			continue;
+		}
+		else if (type_or_error < 0) {
+			break;
+		}
+
+		if (type_or_error == GNUTLS_SAN_DNSNAME || type_or_error == GNUTLS_SAN_RFC822NAME) {
+			wxString dns = wxString(san, wxConvUTF8);
+			if (!dns.empty()) {
+				ret.push_back(dns);
+			}
+		}
+		else if (type_or_error == GNUTLS_SAN_IPADDRESS) {
+			wxString ip = CSocket::AddressToString(san, san_size);
+			if (!ip.empty()) {
+				ret.push_back(ip);
+			}
+		}
+	}
+
+	return ret;
 }
 
 int CTlsSocket::VerifyCertificate()
@@ -1000,26 +1020,26 @@ int CTlsSocket::VerifyCertificate()
 
 	if (gnutls_certificate_type_get(m_session) != GNUTLS_CRT_X509) {
 		m_pOwner->LogMessage(MessageType::Error, _("Unsupported certificate type"));
-		Failure(0, ECONNABORTED);
+		Failure(0, true);
 		return FZ_REPLY_ERROR;
 	}
 
 	unsigned int status = 0;
 	if (gnutls_certificate_verify_peers2(m_session, &status) < 0) {
 		m_pOwner->LogMessage(MessageType::Error, _("Failed to verify peer certificate"));
-		Failure(0, ECONNABORTED);
+		Failure(0, true);
 		return FZ_REPLY_ERROR;
 	}
 
 	if (status & GNUTLS_CERT_REVOKED) {
 		m_pOwner->LogMessage(MessageType::Error, _("Beware! Certificate has been revoked"));
-		Failure(0, ECONNABORTED);
+		Failure(0, true);
 		return FZ_REPLY_ERROR;
 	}
 
 	if (status & GNUTLS_CERT_SIGNER_NOT_CA) {
 		m_pOwner->LogMessage(MessageType::Error, _("Incomplete chain, top certificate is not self-signed certificate authority certificate"));
-		Failure(0, ECONNABORTED);
+		Failure(0, true);
 		return FZ_REPLY_ERROR;
 	}
 
@@ -1027,7 +1047,7 @@ int CTlsSocket::VerifyCertificate()
 	const gnutls_datum_t* cert_list = gnutls_certificate_get_peers(m_session, &cert_list_size);
 	if (!cert_list || !cert_list_size) {
 		m_pOwner->LogMessage(MessageType::Error, _("gnutls_certificate_get_peers returned no certificates"));
-		Failure(0, ECONNABORTED);
+		Failure(0, true);
 		return FZ_REPLY_ERROR;
 	}
 
@@ -1036,7 +1056,7 @@ int CTlsSocket::VerifyCertificate()
 			memcmp(m_implicitTrustedCert.data, cert_list[0].data, cert_list[0].size))
 		{
 			m_pOwner->LogMessage(MessageType::Error, _("Primary connection and data connection certificates don't match."));
-			Failure(0, ECONNABORTED);
+			Failure(0, true);
 			return FZ_REPLY_ERROR;
 		}
 
@@ -1053,7 +1073,7 @@ int CTlsSocket::VerifyCertificate()
 		if (ExtractCert(cert_list, cert))
 			certificates.push_back(cert);
 		else {
-			Failure(0, ECONNABORTED);
+			Failure(0, true);
 			return FZ_REPLY_ERROR;
 		}
 

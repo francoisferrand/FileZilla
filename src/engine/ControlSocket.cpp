@@ -23,8 +23,6 @@
 	#endif
 #endif
 
-#include <errno.h>
-
 struct obtain_lock_event_type;
 typedef CEvent<obtain_lock_event_type> CObtainLockEvent;
 
@@ -92,10 +90,10 @@ Command CControlSocket::GetCurrentCommandId() const
 
 void CControlSocket::LogTransferResultMessage(int nErrorCode, CFileTransferOpData *pData)
 {
-	CTransferStatus status;
 	bool tmp;
 
-	if (m_pEngine->transfer_status_.Get(status, tmp) && (nErrorCode == FZ_REPLY_OK || status.madeProgress)) {
+	CTransferStatus const status = m_pEngine->transfer_status_.Get(tmp);
+	if (!status.empty() && (nErrorCode == FZ_REPLY_OK || status.madeProgress)) {
 		int elapsed = wxTimeSpan(wxDateTime::UNow() - status.started).GetSeconds().GetLo();
 		if (elapsed <= 0)
 			elapsed = 1;
@@ -123,8 +121,7 @@ void CControlSocket::LogTransferResultMessage(int nErrorCode, CFileTransferOpDat
 	else {
 		if ((nErrorCode & FZ_REPLY_CANCELED) == FZ_REPLY_CANCELED)
 			LogMessage(MessageType::Error, _("File transfer aborted by user"));
-		else if (nErrorCode == FZ_REPLY_OK)
-		{
+		else if (nErrorCode == FZ_REPLY_OK) {
 			if (pData->transferInitiated)
 				LogMessage(MessageType::Status, _("File transfer successful"));
 			else
@@ -859,8 +856,7 @@ CRealControlSocket::~CRealControlSocket()
 bool CRealControlSocket::Send(const char *buffer, int len)
 {
 	SetWait(true);
-	if (m_pSendBuffer)
-	{
+	if (m_pSendBuffer) {
 		char *tmp = m_pSendBuffer;
 		m_pSendBuffer = new char[m_nSendBufferLen + len];
 		memcpy(m_pSendBuffer, tmp, m_nSendBufferLen);
@@ -868,14 +864,11 @@ bool CRealControlSocket::Send(const char *buffer, int len)
 		m_nSendBufferLen += len;
 		delete [] tmp;
 	}
-	else
-	{
+	else {
 		int error;
 		int written = m_pBackend->Write(buffer, len, error);
-		if (written < 0)
-		{
-			if (error != EAGAIN)
-			{
+		if (written < 0) {
+			if (error != EAGAIN) {
 				LogMessage(MessageType::Error, _("Could not write to socket: %s"), CSocket::GetErrorDescription(error));
 				LogMessage(MessageType::Error, _("Disconnected from server"));
 				DoClose();
@@ -887,14 +880,10 @@ bool CRealControlSocket::Send(const char *buffer, int len)
 		if (written)
 			SetActive(CFileZillaEngine::send);
 
-		if (written < len)
-		{
-			char *tmp = m_pSendBuffer;
-			m_pSendBuffer = new char[m_nSendBufferLen + len - written];
-			memcpy(m_pSendBuffer, tmp, m_nSendBufferLen);
-			memcpy(m_pSendBuffer + m_nSendBufferLen, buffer, len - written);
-			m_nSendBufferLen += len - written;
-			delete [] tmp;
+		if (written < len) {
+			m_nSendBufferLen = len - written;
+			m_pSendBuffer = new char[m_nSendBufferLen];
+			memcpy(m_pSendBuffer, buffer, len - written);
 		}
 	}
 

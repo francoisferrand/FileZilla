@@ -11,6 +11,9 @@ public:
 	CFileZillaEngine(CFileZillaEngineContext& engine_context);
 	~CFileZillaEngine();
 
+	CFileZillaEngine(CFileZillaEngine const&) = delete;
+	CFileZillaEngine& operator=(CFileZillaEngine const&) = delete;
+
 	// Initialize the engine. Pass over the event handler that should receive notification
 	// events as defined in notification.h
 	int Init(wxEvtHandler *pEventHandler);
@@ -55,7 +58,7 @@ public:
 	// Get a progress update about the current transfer. changed will be set
 	// to true if the data has been updated compared to the last time
 	// GetTransferStatus was called.
-	bool GetTransferStatus(CTransferStatus &status, bool &changed);
+	CTransferStatus GetTransferStatus(bool &changed);
 
 	int CacheLookup(CServerPath const& path, CDirectoryListing& listing);
 

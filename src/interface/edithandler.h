@@ -20,7 +20,7 @@ public:
 		removing
 	};
 
-	enum fileType
+	enum fileType : signed char
 	{
 		none = -1,
 		local,
@@ -47,6 +47,12 @@ public:
 	// Can be used to edit files already being added, user is prompted for action.
 	bool Edit(CEditHandler::fileType type, wxString const fileName, CServerPath const& path, CServer const& server, wxLongLong size, wxWindow* parent);
 
+	struct FileData {
+		wxString name;
+		wxLongLong size;
+	};
+	bool Edit(CEditHandler::fileType type, std::vector<FileData> const& data, CServerPath const& path, CServer const& server, wxWindow* parent);
+	
 	// Adds the file that doesn't exist yet. (Has to be in unknown state)
 	// The initial state will be download
 	bool AddFile(enum fileType type, wxString& fileName, const CServerPath& remotePath, const CServer& server);
@@ -86,7 +92,7 @@ public:
 		CServer server;
 	};
 
-	const std::list<t_fileData>& GetFiles(enum fileType type) const { wxASSERT(type != none); return m_fileDataList[type]; }
+	const std::list<t_fileData>& GetFiles(enum fileType type) const { wxASSERT(type != none); return m_fileDataList[(type == local) ? 0 : 1]; }
 
 	bool UploadFile(const wxString& file, bool unedit);
 	bool UploadFile(const wxString& file, const CServerPath& remotePath, const CServer& server, bool unedit);
@@ -96,6 +102,8 @@ public:
 	wxString GetOpenCommand(const wxString& file, bool& program_exists);
 
 protected:
+	bool DoEdit(CEditHandler::fileType type, FileData const& file, CServerPath const& path, CServer const& server, wxWindow* parent, size_t fileCount, int & already_editing_action);
+
 	CEditHandler();
 	virtual ~CEditHandler() {}
 
@@ -123,7 +131,8 @@ protected:
 	wxTimer m_timer;
 	wxTimer m_busyTimer;
 
-	void RemoveTemporaryFiles(const wxString& temp);
+	void RemoveTemporaryFiles(wxString const& temp);
+	void RemoveTemporaryFilesInSpecificDir(wxString const& temp);
 
 	wxString GetTemporaryFile(wxString name);
 	wxString TruncateFilename(const wxString path, const wxString& name, int max);

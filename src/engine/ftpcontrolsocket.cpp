@@ -20,7 +20,6 @@
 #include <wx/tokenzr.h>
 
 #include <algorithm>
-#include <errno.h>
 
 #define LOGON_WELCOME	0
 #define LOGON_AUTH_TLS	1
@@ -214,15 +213,12 @@ void CFtpControlSocket::OnReceive()
 {
 	LogMessage(MessageType::Debug_Verbose, _T("CFtpControlSocket::OnReceive()"));
 
-	for (;;)
-	{
+	for (;;) {
 		int error;
 		int read = m_pBackend->Read(m_receiveBuffer + m_bufferLen, RECVBUFFERSIZE - m_bufferLen, error);
 
-		if (read < 0)
-		{
-			if (error != EAGAIN)
-			{
+		if (read < 0) {
+			if (error != EAGAIN) {
 				LogMessage(MessageType::Error, _("Could not read from socket: %s"), CSocket::GetErrorDescription(error));
 				if (GetCurrentCommandId() != Command::connect)
 					LogMessage(MessageType::Error, _("Disconnected from server"));
@@ -231,8 +227,7 @@ void CFtpControlSocket::OnReceive()
 			return;
 		}
 
-		if (!read)
-		{
+		if (!read) {
 			LogMessage(MessageType::Error, _("Connection closed by server"));
 			DoClose();
 			return;
@@ -243,8 +238,7 @@ void CFtpControlSocket::OnReceive()
 		char* start = m_receiveBuffer;
 		m_bufferLen += read;
 
-		for (int i = start - m_receiveBuffer; i < m_bufferLen; ++i)
-		{
+		for (int i = start - m_receiveBuffer; i < m_bufferLen; ++i) {
 			char& p = m_receiveBuffer[i];
 			if (p == '\r' ||
 				p == '\n' ||
@@ -734,6 +728,8 @@ int CFtpControlSocket::LogonParseResponse()
 				if (m_pCurrentServer->GetProtocol() == FTP) {
 					// For now. In future make TLS mandatory unless explicitly requested INSECURE_FTP as protocol
 					LogMessage(MessageType::Status, _("Insecure server, it does not support FTP over TLS."));
+					pData->neededCommands[LOGON_PBSZ] = 0;
+					pData->neededCommands[LOGON_PROT] = 0;
 
 					pData->opState = LOGON_LOGON;
 					return SendNextCommand();
@@ -1561,8 +1557,6 @@ int CFtpControlSocket::ListSubcommandResult(int prevResult)
 		ResetOperation(FZ_REPLY_INTERNALERROR);
 		return FZ_REPLY_ERROR;
 	}
-
-	return SendNextCommand();
 }
 
 int CFtpControlSocket::ListSend()
@@ -2611,20 +2605,19 @@ int CFtpControlSocket::FileTransferSend()
 
 				m_pEngine->transfer_status_.Init(pData->remoteFileSize, startOffset, false);
 
-				if (m_pEngine->GetOptions().GetOptionVal(OPTION_PREALLOCATE_SPACE))
-				{
+				if (m_pEngine->GetOptions().GetOptionVal(OPTION_PREALLOCATE_SPACE)) {
 					// Try to preallocate the file in order to reduce fragmentation
 					wxFileOffset sizeToPreallocate = pData->remoteFileSize - startOffset;
-					if (sizeToPreallocate > 0)
-					{
+					if (sizeToPreallocate > 0) {
 						LogMessage(MessageType::Debug_Info, _T("Preallocating %") + wxString(wxFileOffsetFmtSpec) + _T("d bytes for the file \"%s\""), sizeToPreallocate, pData->localFile);
 						wxFileOffset oldPos = pFile->Seek(0, CFile::current);
-						if (pFile->Seek(sizeToPreallocate, CFile::end) == pData->remoteFileSize)
-						{
-							if (!pFile->Truncate())
-								LogMessage(MessageType::Debug_Warning, _T("Impossible to preallocate the file"));
+						if (oldPos != -1) {
+							if (pFile->Seek(sizeToPreallocate, CFile::end) == pData->remoteFileSize) {
+								if (!pFile->Truncate())
+									LogMessage(MessageType::Debug_Warning, _T("Could not preallocate the file"));
+							}
+							pFile->Seek(oldPos, CFile::begin);
 						}
-						pFile->Seek(oldPos, CFile::begin);
 					}
 				}
 			}
@@ -3850,7 +3843,7 @@ int CFtpControlSocket::GetExternalIPAddress(wxString& address)
 		}
 		else if (mode == 2) {
 			if (!m_pIPResolver) {
-				const wxString& localAddress = m_pSocket->GetLocalIP();
+				const wxString& localAddress = m_pSocket->GetLocalIP(true);
 
 				if (!localAddress.empty() && localAddress == m_pEngine->GetOptions().GetOption(OPTION_LASTRESOLVEDIP)) {
 					LogMessage(MessageType::Debug_Verbose, _T("Using cached external IP address"));

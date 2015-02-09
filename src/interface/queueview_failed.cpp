@@ -160,7 +160,7 @@ bool CQueueViewFailed::RequeueFileItem(CFileItem* pFileItem, CServerItem* pServe
 	CQueueView* pQueueView = m_pQueue->GetQueueView();
 
 	pFileItem->m_errorCount = 0;
-	pFileItem->m_statusMessage.clear();
+	pFileItem->SetStatusMessage(CFileItem::none);
 
 	if (!pFileItem->Download() && !wxFileName::FileExists(pFileItem->GetLocalPath().GetPath() + pFileItem->GetLocalFile()))
 	{
@@ -322,7 +322,7 @@ void CQueueViewFailed::OnRequeueSelected(wxCommandEvent& event)
 		m_pQueue->SetSelection(0);
 
 	if (failedToRequeueAll)
-		wxMessageBoxEx(_("Not all items could be requeued for viewing/editing."));
+		wxMessageBoxEx(_("Not all items could be requeued for transfer."));
 }
 
 void CQueueViewFailed::OnRequeueAll(wxCommandEvent& event)
@@ -347,7 +347,7 @@ void CQueueViewFailed::OnRequeueAll(wxCommandEvent& event)
 		m_pQueue->SetSelection(0);
 
 	if (!ret)
-		wxMessageBoxEx(_("Not all items could be requeued for viewing/editing."));
+		wxMessageBoxEx(_("Not all items could be requeued for transfer."));
 }
 
 void CQueueViewFailed::OnChar(wxKeyEvent& event)

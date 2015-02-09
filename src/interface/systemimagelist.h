@@ -33,6 +33,9 @@ class CSystemImageList
 public:
 	CSystemImageList(int size = -1);
 
+	CSystemImageList(CSystemImageList const&) = delete;
+	CSystemImageList& operator=(CSystemImageList const&) = delete;
+
 	bool CreateSystemImageList(int size);
 	virtual ~CSystemImageList();
 
@@ -44,7 +47,7 @@ public:
 	int GetLinkOverlayIndex();
 #endif
 
-protected:
+private:
 	wxImageListEx *m_pImageList;
 
 #ifndef __WXMSW__

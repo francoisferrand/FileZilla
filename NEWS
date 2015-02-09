@@ -10,6 +10,70 @@ Legend:
     *nix: Unix (e.g BSD) and Unix-like systems (e.g. Linux)
     OS X: Apple Mac OS X
 
+3.10.1.1 (2015-02-01)
+
+- Fix editing of files with the same name in different directories
+
+3.10.1 (2015-01-31)
+
+- Don't override proxy settings if loading an implicit session from PuTTY
+- Silently delete junk files left behind by some editors in the temporary directory
+
+3.10.1-rc1 (2015-01-24)
+
++ Fixed wording of some error messages when using FTP over TLS
++ Display subject alternative names in certificate verification dialog
++ If re-editing multiple files already being edited, add a checkbox to apply action to all selected file
+- Editing the same local file multiple times no longer results in an error message
+- Display SHA-256 fingerprints in certificate verification dialog, no longer display MD5 fingerprints.
+- Disable insecure RC4 algorithm in FTP over TLS
+- *nix: Fix assertion when opening the file exists dialog on some multi-display systems
+- Deleting items in the Site Manager now correctly upates the right-hand side of the dialog
+- Dragging items in the Site Manager no longer makes the default port appear in the port input box
+- OS X: Multi-line text edit controls no longer act like rich-text edit controls and no longer perform quote substitution
+
+3.10.0.2 (2015-01-16)
+
+- Fix a crash if a keyfile has been configured for SFTP and this file has become missing or corrupted
+- *nix, OS X: Fix permissions on files uploaded via SFTP.
+
+3.10.0.1 (2015-01-12)
+
+- TLS handshakes no longer stall if the server sends ginormous packets during the handshake that do not fit into a single TLS record
+- Fix loading and saving the same queue item multiple times
+- Post-login commands now work with the protocol set to plain FTP
+- MSW: Allow uploading files that are locally opened for writing by another program
+- OS X: Fix layout issues in search dialog and filter conditions dialog
+
+3.10.0 (2015-01-07)
+
+- Fixed default file exists actions broken by rc1
+
+3.10.0-rc2 (2015-01-03)
+
++ Added Welsh translation
++ Data type indicator in the status bar now reacts to left-clicks as well
+- MSW: Fix crash when displaying the drive list
+
+3.10.0-rc1 (2014-12-29)
+
++ Reduced memory consumption of large queues
++ Preliminary support for Windows 10 technical preview
++ MSW: FileZilla running on a 64bit Windows can now use up to 4GiB of RAM, up from 2GiB
+- Fixed memory leaks in SFTP component
+- Fixed fzsftp crashing on disconnect if using keyfiles
+- Various code cleanup and minor fixes
+
+3.10.0-beta3 (2014-12-19)
+
++ The search dialog now has checkboxes to only search for files or directories
++ In the file lists, Ctrl+Shift+N can now be used to create new directories
++ Added an additional icon theme
++ Small performance improvements parsing large directory listings
++ Updated SFTP components from PuTTY
+- Fixed applying file exists actions to files currently in the queue
+- Don't send the PBSZ and PROT commands to servers that have rejected AUTH TLS/SSL
+
 3.10.0-beta2 (2014-12-05)
 
 - Fixed uploads constantly timing out

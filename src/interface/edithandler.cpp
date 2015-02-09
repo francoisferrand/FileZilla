@@ -1,12 +1,14 @@
 #include <filezilla.h>
-#include "edithandler.h"
+#include "conditionaldialog.h"
 #include "dialogex.h"
+#include "edithandler.h"
 #include "filezillaapp.h"
 #include "file_utils.h"
-#include "queue.h"
-#include "Options.h"
-#include "window_state_manager.h"
 #include "local_filesys.h"
+#include "Options.h"
+#include "queue.h"
+#include "window_state_manager.h"
+#include "xrc_helper.h"
 
 class CChangedFileDialog : public wxDialogEx
 {
@@ -69,7 +71,7 @@ CEditHandler* CEditHandler::Get()
 	return m_pEditHandler;
 }
 
-void CEditHandler::RemoveTemporaryFiles(const wxString& temp)
+void CEditHandler::RemoveTemporaryFiles(wxString const& temp)
 {
 	wxDir dir(temp);
 	if (!dir.IsOpened())
@@ -79,52 +81,61 @@ void CEditHandler::RemoveTemporaryFiles(const wxString& temp)
 	if (!dir.GetFirst(&file, _T("fz3temp-*"), wxDIR_DIRS))
 		return;
 
-	const wxChar& sep = wxFileName::GetPathSeparator();
-	do
-	{
-		const wxString lockfile = temp + file + sep + _("fz3temp-lockfile");
-		if (wxFileName::FileExists(lockfile))
-		{
-#ifndef __WXMSW__
-			int fd = open(lockfile.mb_str(), O_RDWR | O_CLOEXEC, 0);
-			if (fd >= 0)
-			{
-				// Try to lock 1 byte region in the lockfile. m_type specifies the byte to lock.
-				struct flock f = {0};
-				f.l_type = F_WRLCK;
-				f.l_whence = SEEK_SET;
-				f.l_start = 0;
-				f.l_len = 1;
-				f.l_pid = getpid();
-				if (fcntl(fd, F_SETLK, &f)) {
-					// In use by other process
-					close(fd);
-					continue;
-				}
-				close(fd);
-			}
-#endif
-			{
-				wxLogNull log;
-				wxRemoveFile(lockfile);
-			}
-			if (wxFileName::FileExists(lockfile))
-				continue;
+	wxChar const& sep = wxFileName::GetPathSeparator();
+	do {
+		if (!m_localDir.empty() && temp + file + sep == m_localDir) {
+			// Don't delete own working directory
+			continue;
 		}
 
+		RemoveTemporaryFilesInSpecificDir(temp + file + sep);
+	} while (dir.GetNext(&file));
+}
+
+void CEditHandler::RemoveTemporaryFilesInSpecificDir(wxString const& temp)
+{
+	const wxString lockfile = temp + _("fz3temp-lockfile");
+	if (wxFileName::FileExists(lockfile)) {
+#ifndef __WXMSW__
+		int fd = open(lockfile.mb_str(), O_RDWR | O_CLOEXEC, 0);
+		if (fd >= 0)
+		{
+			// Try to lock 1 byte region in the lockfile. m_type specifies the byte to lock.
+			struct flock f = { 0 };
+			f.l_type = F_WRLCK;
+			f.l_whence = SEEK_SET;
+			f.l_start = 0;
+			f.l_len = 1;
+			f.l_pid = getpid();
+			if (fcntl(fd, F_SETLK, &f)) {
+				// In use by other process
+				close(fd);
+				return;
+			}
+			close(fd);
+		}
+#endif
 		{
 			wxLogNull log;
-			wxString file2;
-			wxDir dir2(temp + file);
-			bool res;
-			for ((res = dir2.GetFirst(&file2, _T(""), wxDIR_FILES)); res; res = dir2.GetNext(&file2)) {
-				wxRemoveFile(temp + file + sep + file2);
-			}
+			wxRemoveFile(lockfile);
 		}
+		if (wxFileName::FileExists(lockfile))
+			return;
+	}
 
-		wxLogNull log;
-		wxRmdir(temp + file + sep);
-	} while (dir.GetNext(&file));
+	wxLogNull log;
+
+	{
+		wxString file;
+		wxDir dir(temp);
+		bool res;
+		for ((res = dir.GetFirst(&file, _T(""), wxDIR_FILES)); res; res = dir.GetNext(&file)) {
+			wxRemoveFile(temp + file);
+		}
+	}
+
+	wxRmdir(temp);
+
 }
 
 wxString CEditHandler::GetLocalDirectory()
@@ -143,15 +154,12 @@ wxString CEditHandler::GetLocalDirectory()
 	if (dir.Last() != wxFileName::GetPathSeparator())
 		dir += wxFileName::GetPathSeparator();
 
-	RemoveTemporaryFiles(dir);
-
 	// On POSIX, the permissions of the created directory (700) ensure
 	// that this is a safe operation.
 	// On Windows, the user's profile directory and associated temp dir
 	// already has the correct permissions which get inherited.
 	int i = 1;
-	do
-	{
+	do {
 		wxString newDir = dir + wxString::Format(_T("fz3temp-%d"), i++);
 		if (wxFileName::FileExists(newDir) || wxFileName::DirExists(newDir))
 			continue;
@@ -162,6 +170,12 @@ wxString CEditHandler::GetLocalDirectory()
 		m_localDir = newDir + wxFileName::GetPathSeparator();
 		break;
 	} while (true);
+
+	// Defer deleting stale directories until after having created our own
+	// working directory.
+	// This avoids some strange errors where freshly deleted directories
+	// cannot be instantly recreated.
+	RemoveTemporaryFiles(dir);
 
 #ifdef __WXMSW__
 	m_lockfile_handle = ::CreateFile(m_localDir + _T("fz3temp-lockfile"), GENERIC_WRITE, 0, 0, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY, 0);
@@ -196,8 +210,7 @@ void CEditHandler::Release()
 	if (m_busyTimer.IsRunning())
 		m_busyTimer.Stop();
 
-	if (!m_localDir.empty())
-	{
+	if (!m_localDir.empty()) {
 #ifdef __WXMSW__
 		if (m_lockfile_handle != INVALID_HANDLE_VALUE)
 			CloseHandle(m_lockfile_handle);
@@ -208,13 +221,10 @@ void CEditHandler::Release()
 			close(m_lockfile_descriptor);
 #endif
 
-		{
-			wxLogNull log;
-			wxRemoveFile(m_localDir + _T("empty_file_yq744zm"));
-		}
-
+		wxLogNull log;
+		wxRemoveFile(m_localDir + _T("empty_file_yq744zm"));
 		RemoveAll(true);
-		wxRmdir(m_localDir);
+		RemoveTemporaryFilesInSpecificDir(m_localDir);
 	}
 
 	m_pEditHandler = 0;
@@ -242,37 +252,30 @@ enum CEditHandler::fileState CEditHandler::GetFileState(const wxString& fileName
 int CEditHandler::GetFileCount(enum CEditHandler::fileType type, enum CEditHandler::fileState state, const CServer* pServer /*=0*/) const
 {
 	int count = 0;
-	if (state == unknown)
-	{
+	if (state == unknown) {
 		wxASSERT(!pServer);
 		if (type != remote)
 			count += m_fileDataList[local].size();
 		if (type != local)
 			count += m_fileDataList[remote].size();
 	}
-	else
-	{
-		if (type != remote)
-		{
-			for (std::list<t_fileData>::const_iterator iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter)
-			{
-				if (iter->state != state)
+	else {
+		auto f = [state, pServer](decltype(m_fileDataList[0]) & items) {
+			int count = 0;
+			for (auto const& data : items) {
+				if (data.state != state)
 					continue;
 
-				if (!pServer || iter->server == *pServer)
-					count++;
+				if (!pServer || data.server == *pServer)
+					++count;
 			}
+			return count;
+		};
+		if (type != remote) {
+			count += f(m_fileDataList[local]);
 		}
-		if (type != local)
-		{
-			for (std::list<t_fileData>::const_iterator iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter)
-			{
-				if (iter->state != state)
-					continue;
-
-				if (!pServer || iter->server == *pServer)
-					count++;
-			}
+		if (type != local) {
+			count += f(m_fileDataList[remote]);
 		}
 	}
 
@@ -283,27 +286,24 @@ bool CEditHandler::AddFile(enum CEditHandler::fileType type, wxString& fileName,
 {
 	wxASSERT(type != none);
 
-	enum fileState state;
+	fileState state;
 	if (type == local)
 		state = GetFileState(fileName);
 	else
 		state = GetFileState(fileName, remotePath, server);
-	if (state != unknown)
-	{
+	if (state != unknown) {
 		wxFAIL_MSG(_T("File state not unknown"));
 		return false;
 	}
 
 	t_fileData data;
-	if (type == remote)
-	{
+	if (type == remote) {
 		data.state = download;
 		data.name = fileName;
 		data.file = GetTemporaryFile(fileName);
 		fileName = data.file;
 	}
-	else
-	{
+	else {
 		data.file = fileName;
 		data.name = wxFileName(fileName).GetFullName();
 		data.state = edit;
@@ -363,18 +363,14 @@ bool CEditHandler::RemoveAll(bool force)
 {
 	std::list<t_fileData> keep;
 
-	for (std::list<t_fileData>::iterator iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter)
-	{
-		if (!force && (iter->state == download || iter->state == upload || iter->state == upload_and_remove))
-		{
+	for (std::list<t_fileData>::iterator iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter) {
+		if (!force && (iter->state == download || iter->state == upload || iter->state == upload_and_remove)) {
 			keep.push_back(*iter);
 			continue;
 		}
 
-		if (wxFileName::FileExists(iter->file))
-		{
-			if (!wxRemoveFile(iter->file))
-			{
+		if (wxFileName::FileExists(iter->file)) {
+			if (!wxRemoveFile(iter->file)) {
 				iter->state = removing;
 				keep.push_back(*iter);
 				continue;
@@ -384,13 +380,11 @@ bool CEditHandler::RemoveAll(bool force)
 	m_fileDataList[remote].swap(keep);
 	keep.clear();
 
-	for (auto iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter)
-	{
+	for (auto iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter) {
 		if (force)
 			continue;
 
-		if (iter->state == upload || iter->state == upload_and_remove)
-		{
+		if (iter->state == upload || iter->state == upload_and_remove) {
 			keep.push_back(*iter);
 			continue;
 		}
@@ -409,24 +403,19 @@ bool CEditHandler::RemoveAll(enum fileState state, const CServer* pServer /*=0*/
 
 	std::list<t_fileData> keep;
 
-	for (auto iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter)
-	{
-		if (iter->state != state)
-		{
+	for (auto iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter) {
+		if (iter->state != state) {
 			keep.push_back(*iter);
 			continue;
 		}
 
-		if (pServer && iter->server != *pServer)
-		{
+		if (pServer && iter->server != *pServer) {
 			keep.push_back(*iter);
 			continue;
 		}
 
-		if (wxFileName::FileExists(iter->file))
-		{
-			if (!wxRemoveFile(iter->file))
-			{
+		if (wxFileName::FileExists(iter->file)) {
+			if (!wxRemoveFile(iter->file)) {
 				iter->state = removing;
 				keep.push_back(*iter);
 				continue;
@@ -441,8 +430,7 @@ bool CEditHandler::RemoveAll(enum fileState state, const CServer* pServer /*=0*/
 std::list<CEditHandler::t_fileData>::iterator CEditHandler::GetFile(const wxString& fileName)
 {
 	std::list<t_fileData>::iterator iter;
-	for (iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter)
-	{
+	for (iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter) {
 		if (iter->file == fileName)
 			break;
 	}
@@ -453,8 +441,7 @@ std::list<CEditHandler::t_fileData>::iterator CEditHandler::GetFile(const wxStri
 std::list<CEditHandler::t_fileData>::const_iterator CEditHandler::GetFile(const wxString& fileName) const
 {
 	std::list<t_fileData>::const_iterator iter;
-	for (iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter)
-	{
+	for (iter = m_fileDataList[local].begin(); iter != m_fileDataList[local].end(); ++iter) {
 		if (iter->file == fileName)
 			break;
 	}
@@ -465,8 +452,7 @@ std::list<CEditHandler::t_fileData>::const_iterator CEditHandler::GetFile(const 
 std::list<CEditHandler::t_fileData>::iterator CEditHandler::GetFile(const wxString& fileName, const CServerPath& remotePath, const CServer& server)
 {
 	std::list<t_fileData>::iterator iter;
-	for (iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter)
-	{
+	for (iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter) {
 		if (iter->name != fileName)
 			continue;
 
@@ -485,8 +471,7 @@ std::list<CEditHandler::t_fileData>::iterator CEditHandler::GetFile(const wxStri
 std::list<CEditHandler::t_fileData>::const_iterator CEditHandler::GetFile(const wxString& fileName, const CServerPath& remotePath, const CServer& server) const
 {
 	std::list<t_fileData>::const_iterator iter;
-	for (iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter)
-	{
+	for (iter = m_fileDataList[remote].begin(); iter != m_fileDataList[remote].end(); ++iter) {
 		if (iter->name != fileName)
 			continue;
 
@@ -623,10 +608,8 @@ void CEditHandler::CheckForModifications(bool emitEvent)
 	if (insideCheckForModifications)
 		return;
 
-	if (emitEvent)
-	{
-		wxCommandEvent evt(fzEDIT_CHANGEDFILE);
-		AddPendingEvent(evt);
+	if (emitEvent) {
+		QueueEvent(new wxCommandEvent(fzEDIT_CHANGEDFILE));
 		return;
 	}
 
@@ -683,7 +666,7 @@ checkmodifications_loopbegin:
 			}
 			else if (remove)
 			{
-				if (i == remote)
+				if (i == static_cast<int>(remote))
 				{
 					if (CLocalFileSystem::GetFileInfo(iter->file, is_link, 0, &mtime, 0) != CLocalFileSystem::file || wxRemoveFile(iter->file))
 					{
@@ -1619,33 +1602,82 @@ void CNewAssociationDialog::OnBrowseEditor(wxCommandEvent& event)
 
 bool CEditHandler::Edit(CEditHandler::fileType type, wxString const fileName, CServerPath const& path, CServer const& server, wxLongLong size, wxWindow * parent)
 {
+	std::vector<FileData> data;
+	FileData d{fileName, size};
+	data.push_back(d);
+
+	return Edit(type, data, path, server, parent);
+}
+
+bool CEditHandler::Edit(CEditHandler::fileType type, std::vector<FileData> const& data, CServerPath const& path, CServer const& server, wxWindow * parent)
+{
+	if (type == CEditHandler::remote) {
+		wxString const& localDir = GetLocalDirectory();
+		if (localDir.empty()) {
+			wxMessageBoxEx(_("Could not get temporary directory to download file into."), _("Cannot edit file"), wxICON_STOP);
+			return false;
+		}
+	}
+
+	if (data.empty()) {
+		wxBell();
+		return false;
+	}
+
+	if (data.size() > 10) {
+		CConditionalDialog dlg(parent, CConditionalDialog::many_selected_for_edit, CConditionalDialog::yesno);
+		dlg.SetTitle(_("Confirmation needed"));
+		dlg.AddText(_("You have selected more than 10 files for editing, do you really want to continue?"));
+
+		if (!dlg.Run())
+			return false;
+	}
+
+	bool success = true;
+	int already_editing_action{};
+	for (auto const& file : data) {
+		if (!DoEdit(type, file, path, server, parent, data.size(), already_editing_action)) {
+			success = false;
+		}
+	}
+
+	return success;
+}
+
+bool CEditHandler::DoEdit(CEditHandler::fileType type, FileData const& file, CServerPath const& path, CServer const& server, wxWindow * parent, size_t fileCount, int & already_editing_action)
+{
 	bool dangerous = false;
 	bool program_exists = false;
-	wxString cmd = CanOpen(type, fileName, dangerous, program_exists);
+	wxString cmd = CanOpen(type, file.name, dangerous, program_exists);
 	if (cmd.empty()) {
 		CNewAssociationDialog dlg(parent);
-		if (!dlg.Run(fileName))
+		if (!dlg.Run(file.name)) {
 			return false;
-		cmd = CanOpen(type, fileName, dangerous, program_exists);
+		}
+		cmd = CanOpen(type, file.name, dangerous, program_exists);
 		if (cmd.empty()) {
-			wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nNo program has been associated on your system with this file type."), fileName), _("Opening failed"), wxICON_EXCLAMATION);
+			wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nNo program has been associated on your system with this file type."), file.name), _("Opening failed"), wxICON_EXCLAMATION);
 			return false;
 		}
 	}
 	if (!program_exists) {
-		wxString msg = wxString::Format(_("The file '%s' cannot be opened:\nThe associated program (%s) could not be found.\nPlease check your filetype associations."), fileName, cmd);
+		wxString msg = wxString::Format(_("The file '%s' cannot be opened:\nThe associated program (%s) could not be found.\nPlease check your filetype associations."), file.name, cmd);
 		wxMessageBoxEx(msg, _("Cannot edit file"), wxICON_EXCLAMATION);
 		return false;
 	}
 	if (dangerous) {
-		int res = wxMessageBoxEx(_("The selected file would be executed directly.\nThis can be dangerous and damage your system.\nDo you really want to continue?"), _("Dangerous filetype"), wxICON_EXCLAMATION | wxYES_NO);
+		int res = wxMessageBoxEx(_("The selected file would be executed directly.\nThis can be dangerous and might damage your system.\nDo you really want to continue?"), _("Dangerous filetype"), wxICON_EXCLAMATION | wxYES_NO);
 		if (res != wxYES) {
 			wxBell();
 			return false;
 		}
 	}
 
-	CEditHandler::fileState state = GetFileState(fileName, path, server);
+	fileState state;
+	if (type == local)
+		state = GetFileState(file.name);
+	else
+		state = GetFileState(file.name, path, server);
 	switch (state)
 	{
 	case CEditHandler::download:
@@ -1655,41 +1687,56 @@ bool CEditHandler::Edit(CEditHandler::fileType type, wxString const fileName, CS
 		wxMessageBoxEx(_("A file with that name is already being transferred."), _("Cannot view/edit selected file"), wxICON_EXCLAMATION);
 		return false;
 	case CEditHandler::removing:
-		if (!Remove(fileName, path, server)) {
+		if (!Remove(file.name, path, server)) {
 			wxMessageBoxEx(_("A file with that name is still being edited. Please close it and try again."), _("Selected file is already opened"), wxICON_EXCLAMATION);
 			return false;
 		}
 		break;
 	case CEditHandler::edit:
-		if (type == CEditHandler::local) {
-			int res = wxMessageBoxEx(wxString::Format(_("A file with that name is already being edited. Do you want to reopen '%s'?"), fileName), _("Selected file already being edited"), wxICON_QUESTION | wxYES_NO);
-			if (res != wxYES) {
-				wxBell();
-				return false;
-			}
-			else {
-				StartEditing(fileName);
-				return true;
-			}
-		}
-		else {
-			wxDialogEx dlg;
-			if (!dlg.Load(parent, _T("ID_EDITEXISTING"))) {
-				wxBell();
-				return false;
-			}
-			dlg.SetChildLabel(XRCID("ID_FILENAME"), fileName);
-			if (dlg.ShowModal() != wxID_OK) {
-				wxBell();
-				return false;
+		{
+			int action = already_editing_action;
+			if (!action) {
+				wxDialogEx dlg;
+				if (!dlg.Load(parent, type == CEditHandler::local ? _T("ID_EDITEXISTING_LOCAL") : _T("ID_EDITEXISTING_REMOTE"))) {
+					wxBell();
+					return false;
+				}
+				dlg.SetChildLabel(XRCID("ID_FILENAME"), file.name);
+				if (fileCount < 2) {
+					xrc_call(dlg, "ID_ALWAYS", &wxCheckBox::Hide);
+				}
+				dlg.GetSizer()->Fit(&dlg);
+				int res = dlg.ShowModal();
+				if (res != wxID_OK && res != wxID_YES) {
+					wxBell();
+					action = -1;
+				}
+				else if (type == CEditHandler::local || xrc_call(dlg, "ID_REOPEN", &wxRadioButton::GetValue)) {
+					action = 1;
+				}
+				else {
+					action = 2;
+				}
+
+				if (xrc_call(dlg, "ID_ALWAYS", &wxCheckBox::GetValue)) {
+					already_editing_action = action;
+				}
 			}
 
-			if (XRCCTRL(dlg, "ID_REOPEN", wxRadioButton)->GetValue()) {
-				StartEditing(fileName, path, server);
+			if (action == -1) {
 				return false;
 			}
+			else if (action == 1) {
+				if (type == CEditHandler::local) {
+					StartEditing(file.name);
+				}
+				else {
+					StartEditing(file.name, path, server);
+				}
+				return true;
+			}
 			else {
-				if (!Remove(fileName, path, server)) {
+				if (!Remove(file.name, path, server)) {
 					wxMessageBoxEx(_("The selected file is still opened in some other program, please close it."), _("Selected file is still being edited"), wxICON_EXCLAMATION);
 					return false;
 				}
@@ -1700,10 +1747,10 @@ bool CEditHandler::Edit(CEditHandler::fileType type, wxString const fileName, CS
 		break;
 	}
 
-	wxString file = fileName;
-	if (!AddFile(type, file, path, server)) {
+	wxString localFile = file.name;
+	if (!AddFile(type, localFile, path, server)) {
 		if( type == CEditHandler::local) {
-			wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nThe associated command failed"), fileName), _("Opening failed"), wxICON_EXCLAMATION);
+			wxMessageBoxEx(wxString::Format(_("The file '%s' could not be opened:\nThe associated command failed"), file.name), _("Opening failed"), wxICON_EXCLAMATION);
 		}
 		else {
 			wxFAIL;
@@ -1713,11 +1760,11 @@ bool CEditHandler::Edit(CEditHandler::fileType type, wxString const fileName, CS
 	}
 
 	if (type == CEditHandler::remote) {
-		wxString localFile;
-		CLocalPath localPath(file, &localFile);
+		wxString localFileName;
+		CLocalPath localPath(localFile, &localFileName);
 
-		m_pQueue->QueueFile(false, true, fileName, (localFile != fileName) ? localFile : wxString(),
-			localPath, path, server, size, type, QueuePriority::high);
+		m_pQueue->QueueFile(false, true, file.name, (localFileName != file.name) ? localFileName : wxString(),
+			localPath, path, server, file.size, type, QueuePriority::high);
 		m_pQueue->QueueFile_Finish(true);
 	}
 

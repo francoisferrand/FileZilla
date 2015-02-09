@@ -253,6 +253,9 @@ CRemoteTreeView::CRemoteTreeView(wxWindow* parent, wxWindowID id, CState* pState
 
 	CreateImageList();
 
+	UpdateSortMode();
+	RegisterOption(OPTION_FILELIST_NAMESORT);
+
 	m_busy = false;
 	m_pQueue = pQueue;
 	AddRoot(_T(""));
@@ -276,40 +279,24 @@ void CRemoteTreeView::OnStateChange(CState* pState, enum t_statechange_notificat
 	else if (notification == STATECHANGE_REMOTE_DIR_MODIFIED)
 		SetDirectoryListing(pState->GetRemoteDir(), true);
 	else if (notification == STATECHANGE_APPLYFILTER)
-		ApplyFilters();
+		ApplyFilters(false);
 }
 
 void CRemoteTreeView::SetDirectoryListing(std::shared_ptr<CDirectoryListing> const& pListing, bool modified)
 {
 	m_busy = true;
 
-	switch (COptions::Get()->GetOptionVal(OPTION_FILELIST_NAMESORT))
-	{
-	case 0:
-	default:
-		m_nameSortMode = CFileListCtrlSortBase::namesort_caseinsensitive;
-		break;
-	case 1:
-		m_nameSortMode = CFileListCtrlSortBase::namesort_casesensitive;
-		break;
-	case 2:
-		m_nameSortMode = CFileListCtrlSortBase::namesort_natural;
-		break;
-	}
-
-	if (!pListing)
-	{
+	if (!pListing) {
 		m_ExpandAfterList = wxTreeItemId();
 		DeleteAllItems();
 		AddRoot(_T(""));
 		m_busy = false;
-		if (FindFocus() == this)
-		{
-			wxNavigationKeyEvent evt;
-			evt.SetFromTab(true);
-			evt.SetEventObject(this);
-			evt.SetDirection(true);
-			AddPendingEvent(evt);
+		if (FindFocus() == this) {
+			wxNavigationKeyEvent *evt = new wxNavigationKeyEvent();
+			evt->SetFromTab(true);
+			evt->SetEventObject(this);
+			evt->SetDirection(true);
+			QueueEvent(evt);
 		}
 		Enable(false);
 		m_contextMenuItem = wxTreeItemId();
@@ -599,19 +586,16 @@ void CRemoteTreeView::RefreshItem(wxTreeItemId parent, const CDirectoryListing& 
 			dirs.push_back(listing[i].name);
 	}
 
-	dirs.Sort(CFileListCtrlSortBase::GetCmpFunction(m_nameSortMode));
+	auto const& sortFunc = CFileListCtrlSortBase::GetCmpFunction(m_nameSortMode);
+	dirs.Sort(sortFunc);
 
 	bool inserted = false;
 	child = GetLastChild(parent);
 	wxArrayString::reverse_iterator iter = dirs.rbegin();
-	while (child && iter != dirs.rend())
-	{
-		int cmp = GetItemText(child).CmpNoCase(*iter);
-		if (!cmp)
-			cmp = GetItemText(child).Cmp(*iter);
+	while (child && iter != dirs.rend()) {
+		int cmp = sortFunc(GetItemText(child), *iter);
 
-		if (!cmp)
-		{
+		if (!cmp) {
 			CServerPath path = listing.path;
 			path.AddSegment(*iter);
 
@@ -628,8 +612,7 @@ void CRemoteTreeView::RefreshItem(wxTreeItemId parent, const CDirectoryListing& 
 			child = GetPrevSibling(child);
 			++iter;
 		}
-		else if (cmp > 0)
-		{
+		else if (cmp > 0) {
 			// Child no longer exists
 			wxTreeItemId sel = GetSelection();
 			while (sel && sel != child)
@@ -639,23 +622,20 @@ void CRemoteTreeView::RefreshItem(wxTreeItemId parent, const CDirectoryListing& 
 				Delete(child);
 			child = prev;
 		}
-		else if (cmp < 0)
-		{
+		else if (cmp < 0) {
 			// New directory
 			CServerPath path = listing.path;
 			path.AddSegment(*iter);
 
 			CDirectoryListing subListing;
-			if (m_pState->m_pEngine->CacheLookup(path, subListing) == FZ_REPLY_OK)
-			{
+			if (m_pState->m_pEngine->CacheLookup(path, subListing) == FZ_REPLY_OK) {
 				wxTreeItemId child = AppendItem(parent, *iter, 0, 2, 0);
 				SetItemImages(child, false);
 
 				if (HasSubdirs(subListing, filter))
 					AppendItem(child, _T(""), -1, -1);
 			}
-			else
-			{
+			else {
 				wxTreeItemId child = AppendItem(parent, *iter, 1, 3, 0);
 				if (child)
 					SetItemImages(child, true);
@@ -665,8 +645,7 @@ void CRemoteTreeView::RefreshItem(wxTreeItemId parent, const CDirectoryListing& 
 			inserted = true;
 		}
 	}
-	while (child)
-	{
+	while (child) {
 		// Child no longer exists
 		wxTreeItemId sel = GetSelection();
 		while (sel && sel != child)
@@ -676,22 +655,19 @@ void CRemoteTreeView::RefreshItem(wxTreeItemId parent, const CDirectoryListing& 
 			Delete(child);
 		child = prev;
 	}
-	while (iter != dirs.rend())
-	{
+	while (iter != dirs.rend()) {
 		CServerPath path = listing.path;
 		path.AddSegment(*iter);
 
 		CDirectoryListing subListing;
-		if (m_pState->m_pEngine->CacheLookup(path, subListing) == FZ_REPLY_OK)
-		{
+		if (m_pState->m_pEngine->CacheLookup(path, subListing) == FZ_REPLY_OK) {
 			wxTreeItemId child = AppendItem(parent, *iter, 0, 2, 0);
 			SetItemImages(child, false);
 
 			if (HasSubdirs(subListing, filter))
 				AppendItem(child, _T(""), -1, -1);
 		}
-		else
-		{
+		else {
 			wxTreeItemId child = AppendItem(parent, *iter, 1, 3, 0);
 			SetItemImages(child, true);
 		}
@@ -702,25 +678,6 @@ void CRemoteTreeView::RefreshItem(wxTreeItemId parent, const CDirectoryListing& 
 
 	if (inserted)
 		SortChildren(parent);
-}
-
-int CRemoteTreeView::OnCompareItems(const wxTreeItemId& item1, const wxTreeItemId& item2)
-{
-	wxString label1 = GetItemText(item1);
-	wxString label2 = GetItemText(item2);
-
-	switch (m_nameSortMode)
-	{
-	case CFileListCtrlSortBase::namesort_casesensitive:
-		return CFileListCtrlSortBase::CmpCase(label1, label2);
-
-	default:
-	case CFileListCtrlSortBase::namesort_caseinsensitive:
-		return CFileListCtrlSortBase::CmpNoCase(label1, label2);
-
-	case CFileListCtrlSortBase::namesort_natural:
-		return CFileListCtrlSortBase::CmpNatural(label1, label2);
-	}
 }
 
 void CRemoteTreeView::OnItemExpanding(wxTreeEvent& event)
@@ -1379,7 +1336,7 @@ struct _parents
 	CServerPath path;
 };
 
-void CRemoteTreeView::ApplyFilters()
+void CRemoteTreeView::ApplyFilters(bool resort)
 {
 	std::list<struct _parents> parents;
 
@@ -1400,6 +1357,10 @@ void CRemoteTreeView::ApplyFilters()
 	while (!parents.empty()) {
 		struct _parents parent = parents.back();
 		parents.pop_back();
+
+		if (resort) {
+			SortChildren(parent.item);
+		}
 
 		CDirectoryListing listing;
 		if (m_pState->m_pEngine->CacheLookup(parent.path, listing) == FZ_REPLY_OK)
@@ -1477,4 +1438,29 @@ void CRemoteTreeView::OnMenuGeturl(wxCommandEvent&)
 
 	wxTheClipboard->Flush();
 	wxTheClipboard->Close();
+}
+
+void CRemoteTreeView::UpdateSortMode()
+{
+	switch (COptions::Get()->GetOptionVal(OPTION_FILELIST_NAMESORT))
+	{
+	case 0:
+	default:
+		m_nameSortMode = CFileListCtrlSortBase::namesort_caseinsensitive;
+		break;
+	case 1:
+		m_nameSortMode = CFileListCtrlSortBase::namesort_casesensitive;
+		break;
+	case 2:
+		m_nameSortMode = CFileListCtrlSortBase::namesort_natural;
+		break;
+	}
+}
+
+void CRemoteTreeView::OnOptionsChanged(changed_options_t const& options)
+{
+	if (options.test(OPTION_FILELIST_NAMESORT)) {
+		UpdateSortMode();
+		ApplyFilters(true);
+	}
 }
